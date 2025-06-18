@@ -1,6 +1,7 @@
 #include "BluetoothManager.hpp"
 #include <esp_bt_main.h>
 #include <esp_bt_device.h>
+#include <esp_task_wdt.h>
 
 namespace BTLogger {
 namespace Core {
@@ -63,11 +64,17 @@ BluetoothManager::~BluetoothManager() {
 }
 
 bool BluetoothManager::initialize() {
-    Serial.println("Initializing Bluetooth...");
+    Serial.println("Initializing Bluetooth with community optimizations...");
 
-    // Initialize BLE
+    // Initialize BLE with optimized settings
     BLEDevice::init("BTLogger");
     BLEDevice::setPower(ESP_PWR_LVL_P7);
+
+    // Set BLE configuration for better connection reliability (community recommendations)
+    BLEDevice::setMTU(517);  // Maximum MTU for better throughput
+
+    // Free up memory by limiting advertising data
+    BLEDevice::setCustomGapHandler(nullptr);
 
     // Create BLE scanner
     scanner = BLEDevice::getScan();
@@ -147,10 +154,24 @@ void BluetoothManager::onDeviceFound(BLEAdvertisedDevice advertisedDevice) {
         if (!alreadyExists) {
             availableDevices.push_back(advertisedDevice);
 
-            // Auto-connect to the first compatible device
+            // Auto-connect to the first compatible device with retry logic
             if (getConnectedDeviceCount() == 0) {
                 Serial.printf("Auto-connecting to: %s\n", deviceName.c_str());
-                connectToDevice(deviceAddress);
+
+                // Retry connection up to 3 times (community best practice)
+                bool connectionSuccess = false;
+                for (int retry = 1; retry <= 3 && !connectionSuccess; retry++) {
+                    Serial.printf("Connection attempt %d/3...\n", retry);
+                    connectionSuccess = connectToDevice(deviceAddress);
+                    if (!connectionSuccess && retry < 3) {
+                        Serial.printf("Retry %d failed, waiting 2 seconds...\n", retry);
+                        delay(2000);  // Wait between retries
+                    }
+                }
+
+                if (!connectionSuccess) {
+                    Serial.println("All connection attempts failed - will retry on next scan");
+                }
             }
         }
     }
@@ -186,10 +207,63 @@ bool BluetoothManager::connectToDevice(const String& address) {
     BLEClient* client = BLEDevice::createClient();
     client->setClientCallbacks(new BTLoggerClientCallbacks(address));
 
-    // Connect to device
-    if (!client->connect(targetDevice)) {
-        Serial.println("Failed to connect to device");
-        delete client;
+    // Connect to device using FreeRTOS task with timeout (community proven solution)
+    Serial.println("Attempting BLE connection with task timeout...");
+
+    // Connection state variables
+    volatile bool connectionAttemptComplete = false;
+    volatile bool connectionResult = false;
+    TaskHandle_t connectionTaskHandle = NULL;
+
+    // Connection task parameters
+    struct ConnectionParams {
+        BLEClient* client;
+        BLEAdvertisedDevice* device;
+        volatile bool* complete;
+        volatile bool* result;
+    } connParams = {client, targetDevice, &connectionAttemptComplete, &connectionResult};
+
+    // Create connection task
+    xTaskCreate([](void* param) {
+        ConnectionParams* p = (ConnectionParams*)param;
+        Serial.println("Connection task started...");
+        *(p->result) = p->client->connect(p->device);
+        *(p->complete) = true;
+        Serial.printf("Connection task completed with result: %s\n", *(p->result) ? "SUCCESS" : "FAILED");
+        vTaskDelete(NULL);
+    },
+                "BLE_Connect", 8192, &connParams, 1, &connectionTaskHandle);
+
+    // Wait for connection with timeout
+    unsigned long startTime = millis();
+    const unsigned long TIMEOUT = 10000;  // 10 seconds
+
+    while (!connectionAttemptComplete && (millis() - startTime < TIMEOUT)) {
+        delay(100);
+        yield();  // Allow other tasks to run
+    }
+
+    bool connected = false;
+    if (connectionAttemptComplete) {
+        connected = connectionResult;
+        Serial.printf("Connection completed: %s\n", connected ? "SUCCESS" : "FAILED");
+    } else {
+        Serial.println("Connection timeout - killing task");
+        if (connectionTaskHandle != NULL) {
+            vTaskDelete(connectionTaskHandle);
+        }
+        connected = false;
+    }
+
+    if (!connected) {
+        Serial.println("Failed to connect to device - cleaning up client");
+        // Clean up client properly (community best practice)
+        if (client) {
+            delete client;
+            client = nullptr;
+        }
+        // Brief delay before allowing another connection attempt
+        delay(1000);
         return false;
     }
 

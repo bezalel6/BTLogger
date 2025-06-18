@@ -7,6 +7,10 @@ namespace BTLogger {
 namespace UI {
 namespace Screens {
 
+// Define adjustment ranges
+const SettingsScreen::AdjustmentRange SettingsScreen::UI_SCALE_RANGE(0.8f, 1.5f, 0.1f);
+const SettingsScreen::AdjustmentRange SettingsScreen::TEXT_SIZE_RANGE(0.8f, 2.0f, 0.1f);
+
 SettingsScreen::SettingsScreen() : Screen("Settings"),
                                    backButton(nullptr),
                                    scrollOffset(0),
@@ -108,22 +112,22 @@ void SettingsScreen::createSettings() {
         calibrateTouch();
     });
 
-    // UI Scale (layout only)
-    settings.emplace_back("UI Scale", getUIScaleText(), [this]() {
-        adjustUIScale();
+    // UI Scale (with adjustment buttons)
+    settings.emplace_back("UI Scale", getUIScaleText(), [this](bool increase) {
+        adjustUIScale(increase);
     });
 
-    // Text Size Settings
-    settings.emplace_back("Label Text Size", getLabelTextSizeText(), [this]() {
-        adjustLabelTextSize();
+    // Text Size Settings (with adjustment buttons)
+    settings.emplace_back("Label Text Size", getLabelTextSizeText(), [this](bool increase) {
+        adjustLabelTextSize(increase);
     });
 
-    settings.emplace_back("Button Text Size", getButtonTextSizeText(), [this]() {
-        adjustButtonTextSize();
+    settings.emplace_back("Button Text Size", getButtonTextSizeText(), [this](bool increase) {
+        adjustButtonTextSize(increase);
     });
 
-    settings.emplace_back("General Text Size", getGeneralTextSizeText(), [this]() {
-        adjustGeneralTextSize();
+    settings.emplace_back("General Text Size", getGeneralTextSizeText(), [this](bool increase) {
+        adjustGeneralTextSize(increase);
     });
 
     // Debug Mode
@@ -153,7 +157,7 @@ void SettingsScreen::updateSettingsList() {
     int startY = HEADER_HEIGHT + UIScale::scale(10);
     int buttonHeight = UIScale::scale(SETTING_BUTTON_HEIGHT);
     int buttonSpacing = UIScale::scale(45);
-    int buttonWidth = lcd->width() - UIScale::scale(20);
+    int totalWidth = lcd->width() - UIScale::scale(20);
 
     maxVisibleSettings = (lcd->height() - HEADER_HEIGHT - FOOTER_HEIGHT - UIScale::scale(20)) / buttonSpacing;
 
@@ -162,28 +166,69 @@ void SettingsScreen::updateSettingsList() {
         int visibleIndex = i - scrollOffset;
         if (visibleIndex >= 0 && visibleIndex < maxVisibleSettings) {
             int buttonY = startY + (visibleIndex * buttonSpacing);
-
-            String buttonText = settings[i].name + ": " + settings[i].value;
-            auto settingButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
-                                                     buttonWidth, buttonHeight, buttonText);
-
-            // Capture setting index for callback
             size_t settingIndex = i;
 
-            settingButton->setCallback([this, settingIndex]() {
-                if (settingIndex < settings.size() && settings[settingIndex].callback) {
-                    settings[settingIndex].callback();
-                    // Refresh settings list after action
-                    createSettings();
-                    updateSettingsList();
-                    markForRedraw();
-                }
-            });
+            if (settings[i].hasAdjustment) {
+                // Create label + buttons layout for adjustable settings
+                int labelWidth = totalWidth * 0.5f;
+                int buttonWidth = totalWidth * 0.2f;
+                int buttonGap = UIScale::scale(5);
 
-            // Use different colors for different setting types
-            settingButton->setColors(0x001F, 0x051F, 0x8410, 0xFFFF);  // Blue theme
+                // Setting label
+                String labelText = settings[i].name + ": " + settings[i].value;
+                auto labelButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
+                                                       labelWidth, buttonHeight, labelText);
+                labelButton->setColors(0x0000, 0x0000, 0x8410, 0xFFFF);  // Read-only appearance
+                settingButtons.push_back(labelButton);
 
-            settingButtons.push_back(settingButton);
+                // Minus button
+                auto minusButton = new Widgets::Button(*lcd, UIScale::scale(10) + labelWidth + buttonGap, buttonY,
+                                                       buttonWidth, buttonHeight, "-");
+                minusButton->setCallback([this, settingIndex]() {
+                    if (settingIndex < settings.size() && settings[settingIndex].adjustCallback) {
+                        settings[settingIndex].adjustCallback(false);  // false = decrease
+                        createSettings();
+                        updateSettingsList();
+                        markForRedraw();
+                    }
+                });
+                minusButton->setColors(0x8000, 0xA000, 0x8410, 0xFFFF);  // Red theme for minus
+                settingButtons.push_back(minusButton);
+
+                // Plus button
+                auto plusButton = new Widgets::Button(*lcd, UIScale::scale(10) + labelWidth + buttonGap + buttonWidth + buttonGap, buttonY,
+                                                      buttonWidth, buttonHeight, "+");
+                plusButton->setCallback([this, settingIndex]() {
+                    if (settingIndex < settings.size() && settings[settingIndex].adjustCallback) {
+                        settings[settingIndex].adjustCallback(true);  // true = increase
+                        createSettings();
+                        updateSettingsList();
+                        markForRedraw();
+                    }
+                });
+                plusButton->setColors(0x03E0, 0x07E0, 0x8410, 0xFFFF);  // Green theme for plus
+                settingButtons.push_back(plusButton);
+            } else {
+                // Single button for non-adjustable settings
+                String buttonText = settings[i].name + ": " + settings[i].value;
+                auto settingButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
+                                                         totalWidth, buttonHeight, buttonText);
+
+                settingButton->setCallback([this, settingIndex]() {
+                    if (settingIndex < settings.size() && settings[settingIndex].callback) {
+                        settings[settingIndex].callback();
+                        // Refresh settings list after action
+                        createSettings();
+                        updateSettingsList();
+                        markForRedraw();
+                    }
+                });
+
+                // Use different colors for different setting types
+                settingButton->setColors(0x001F, 0x051F, 0x8410, 0xFFFF);  // Blue theme
+
+                settingButtons.push_back(settingButton);
+            }
         }
     }
 }
@@ -274,21 +319,33 @@ void SettingsScreen::calibrateTouch() {
     ScreenManager::setStatusText("Touch calibration complete");
 }
 
-void SettingsScreen::adjustUIScale() {
-    float currentScale = UIScale::getScale();
-
-    // Cycle through scale values: 0.8, 1.0, 1.2, 1.5
-    if (currentScale < 0.9f) {
-        UIScale::setScale(1.0f);
-    } else if (currentScale < 1.1f) {
-        UIScale::setScale(1.2f);
-    } else if (currentScale < 1.3f) {
-        UIScale::setScale(1.5f);
+// Helper methods for range-based adjustments
+float SettingsScreen::adjustValueInRange(float currentValue, const AdjustmentRange& range, bool increase) {
+    if (increase) {
+        float newValue = currentValue + range.step;
+        return (newValue <= range.end) ? newValue : range.end;
     } else {
-        UIScale::setScale(0.8f);
+        float newValue = currentValue - range.step;
+        return (newValue >= range.start) ? newValue : range.start;
     }
+}
 
-    ScreenManager::setStatusText("UI Scale changed to " + String(UIScale::getScale(), 1) + "x");
+int SettingsScreen::adjustValueInRange(int currentValue, const AdjustmentRange& range, bool increase) {
+    if (increase) {
+        int newValue = currentValue + (int)range.step;
+        return (newValue <= (int)range.end) ? newValue : (int)range.end;
+    } else {
+        int newValue = currentValue - (int)range.step;
+        return (newValue >= (int)range.start) ? newValue : (int)range.start;
+    }
+}
+
+void SettingsScreen::adjustUIScale(bool increase) {
+    float currentScale = UIScale::getScale();
+    float newScale = adjustValueInRange(currentScale, UI_SCALE_RANGE, increase);
+
+    UIScale::setScale(newScale);
+    ScreenManager::setStatusText("UI Scale changed to " + String(newScale, 1) + "x");
 }
 
 void SettingsScreen::toggleDebugMode() {
@@ -340,23 +397,26 @@ String SettingsScreen::getGeneralTextSizeText() {
     return "Size " + String(UIScale::getGeneralTextSize());
 }
 
-void SettingsScreen::adjustLabelTextSize() {
+void SettingsScreen::adjustLabelTextSize(bool increase) {
     int currentSize = UIScale::getLabelTextSize();
-    int newSize = (currentSize % 4) + 1;  // Cycle through 1, 2, 3, 4
+    int newSize = adjustValueInRange(currentSize, TEXT_SIZE_RANGE, increase);
+
     UIScale::setLabelTextSize(newSize);
     ScreenManager::setStatusText("Label text size: " + String(newSize));
 }
 
-void SettingsScreen::adjustButtonTextSize() {
+void SettingsScreen::adjustButtonTextSize(bool increase) {
     int currentSize = UIScale::getButtonTextSize();
-    int newSize = (currentSize % 4) + 1;  // Cycle through 1, 2, 3, 4
+    int newSize = adjustValueInRange(currentSize, TEXT_SIZE_RANGE, increase);
+
     UIScale::setButtonTextSize(newSize);
     ScreenManager::setStatusText("Button text size: " + String(newSize));
 }
 
-void SettingsScreen::adjustGeneralTextSize() {
+void SettingsScreen::adjustGeneralTextSize(bool increase) {
     int currentSize = UIScale::getGeneralTextSize();
-    int newSize = (currentSize % 4) + 1;  // Cycle through 1, 2, 3, 4
+    int newSize = adjustValueInRange(currentSize, TEXT_SIZE_RANGE, increase);
+
     UIScale::setGeneralTextSize(newSize);
     ScreenManager::setStatusText("General text size: " + String(newSize));
 }

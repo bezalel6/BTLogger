@@ -6,12 +6,15 @@ namespace UI {
 namespace Widgets {
 
 Button::Button(lgfx::LGFX_Device& display, int x, int y, int w, int h, const String& label)
-    : lcd(&display), posX(x), posY(y), width(w), height(h), text(label), bgColor(0x0000), borderColor(0x8410), textColor(0xFFFF), bgColorPressed(0x8410), borderColorPressed(0xFFFF), textColorPressed(0x0000), pressed(false), enabled(true), callback(nullptr) {
+    : lcd(&display), posX(x), posY(y), width(w), height(h), text(label), bgColor(0x0000), borderColor(0x8410), textColor(0xFFFF), bgColorPressed(0x8410), borderColorPressed(0xFFFF), textColorPressed(0x0000), pressed(false), enabled(true), callback(nullptr), scrollingText(nullptr), useScrollingText(false) {
     // Auto-adjust width if it's too small for the text
     adjustWidthForText();
+    // Initialize scrolling text if needed
+    initializeScrollingText();
 }
 
 Button::~Button() {
+    delete scrollingText;
 }
 
 void Button::adjustWidthForText() {
@@ -25,9 +28,52 @@ void Button::adjustWidthForText() {
     }
 }
 
+void Button::initializeScrollingText() {
+    if (!lcd || text.isEmpty()) return;
+
+    int textSize = UIScale::getButtonTextSize();
+    int textWidth = UIScale::calculateTextWidth(text, textSize);
+    int availableWidth = width - UIScale::scale(16);  // Account for padding
+
+    // Only use scrolling text if the text is too long
+    if (textWidth > availableWidth && availableWidth > 0) {
+        if (!scrollingText) {
+            scrollingText = new ScrollingText(*lcd, 0, 0, availableWidth, textSize);
+        }
+        scrollingText->setText(text);
+        scrollingText->setMaxWidth(availableWidth);
+        scrollingText->setTextSize(textSize);
+        scrollingText->startScrolling();
+        useScrollingText = true;
+    } else {
+        // Text fits, no need for scrolling
+        useScrollingText = false;
+        if (scrollingText) {
+            scrollingText->stopScrolling();
+        }
+    }
+}
+
+void Button::updateScrollingTextProperties() {
+    if (!scrollingText) return;
+
+    // Calculate text area within button
+    int textSize = UIScale::getButtonTextSize();
+    int textHeight = UIScale::calculateTextHeight(textSize);
+    int availableWidth = width - UIScale::scale(16);  // Account for padding
+
+    int textX = posX + UIScale::scale(8);          // Left padding
+    int textY = posY + (height - textHeight) / 2;  // Vertically centered
+
+    scrollingText->setPosition(textX, textY);
+    scrollingText->setMaxWidth(availableWidth);
+    scrollingText->setTextSize(textSize);
+}
+
 void Button::setText(const String& newText) {
     text = newText;
     adjustWidthForText();
+    initializeScrollingText();
 }
 
 void Button::draw() {
@@ -46,28 +92,41 @@ void Button::draw() {
 
     // Draw text
     if (!text.isEmpty()) {
-        int textSize = UIScale::getButtonTextSize();
-        lcd->setTextSize(textSize);
-        lcd->setTextColor(currentText);
+        if (useScrollingText && scrollingText) {
+            // Update scrolling text properties and draw
+            updateScrollingTextProperties();
+            scrollingText->setColors(currentText, currentBg);
+            scrollingText->draw();
+        } else {
+            // Static text drawing (fallback)
+            int textSize = UIScale::getButtonTextSize();
+            lcd->setTextSize(textSize);
+            lcd->setTextColor(currentText);
 
-        // Calculate text position for centering
-        int textWidth = UIScale::calculateTextWidth(text, textSize);
-        int textHeight = UIScale::calculateTextHeight(textSize);
+            // Calculate text position for centering
+            int textWidth = UIScale::calculateTextWidth(text, textSize);
+            int textHeight = UIScale::calculateTextHeight(textSize);
 
-        int textX = posX + (width - textWidth) / 2;
-        int textY = posY + (height - textHeight) / 2;
+            int textX = posX + (width - textWidth) / 2;
+            int textY = posY + (height - textHeight) / 2;
 
-        // Ensure text doesn't go outside button bounds
-        textX = constrain(textX, posX + 2, posX + width - textWidth - 2);
-        textY = constrain(textY, posY + 2, posY + height - textHeight - 2);
+            // Ensure text doesn't go outside button bounds
+            textX = constrain(textX, posX + 2, posX + width - textWidth - 2);
+            textY = constrain(textY, posY + 2, posY + height - textHeight - 2);
 
-        lcd->setCursor(textX, textY);
-        lcd->print(text);
+            lcd->setCursor(textX, textY);
+            lcd->print(text);
+        }
     }
 }
 
 void Button::update() {
     // Button updates are handled via touch events
+
+    // Update scrolling text animation
+    if (useScrollingText && scrollingText) {
+        scrollingText->update();
+    }
 }
 
 bool Button::handleTouch(int x, int y, bool touched) {
@@ -136,6 +195,18 @@ void Button::setColors(uint16_t bg, uint16_t bgPress, uint16_t border, uint16_t 
 void Button::setPosition(int x, int y) {
     posX = x;
     posY = y;
+}
+
+void Button::pauseScrolling() {
+    if (scrollingText) {
+        scrollingText->pauseScrolling();
+    }
+}
+
+void Button::resumeScrolling() {
+    if (scrollingText) {
+        scrollingText->resumeScrolling();
+    }
 }
 
 }  // namespace Widgets

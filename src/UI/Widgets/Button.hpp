@@ -4,6 +4,7 @@
 #include <LovyanGFX.hpp>
 #include <Arduino.h>
 #include <functional>
+#include "ScrollingText.hpp"
 
 namespace BTLogger {
 namespace UI {
@@ -53,6 +54,10 @@ class Button {
     void setColors(uint16_t bg, uint16_t bgPress, uint16_t border, uint16_t txt);
     void setPosition(int x, int y);
 
+    // Scrolling control
+    void pauseScrolling();
+    void resumeScrolling();
+
     // State
     bool isPressed() const;
     bool isEnabled() const;
@@ -83,8 +88,14 @@ class Button {
     // Callback
     std::function<void()> callback;
 
+    // Scrolling text component
+    ScrollingText* scrollingText;
+    bool useScrollingText;
+
     // Helper methods
     void adjustWidthForText();
+    void initializeScrollingText();
+    void updateScrollingTextProperties();
 };
 
 }  // namespace Widgets

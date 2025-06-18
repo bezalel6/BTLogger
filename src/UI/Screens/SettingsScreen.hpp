@@ -23,13 +23,31 @@ class SettingsScreen : public Screen {
     void cleanup() override;
 
    private:
+    // Range constants for adjustable settings
+    struct AdjustmentRange {
+        float start;
+        float end;
+        float step;
+
+        AdjustmentRange(float s, float e, float st) : start(s), end(e), step(st) {}
+    };
+
+    // Constants for adjustment ranges
+    static const AdjustmentRange UI_SCALE_RANGE;
+    static const AdjustmentRange TEXT_SIZE_RANGE;
+
     struct SettingItem {
         String name;
         String value;
         std::function<void()> callback;
+        bool hasAdjustment;
+        std::function<void(bool)> adjustCallback;  // true for +, false for -
 
         SettingItem(const String& n, const String& v, std::function<void()> cb)
-            : name(n), value(v), callback(cb) {}
+            : name(n), value(v), callback(cb), hasAdjustment(false) {}
+
+        SettingItem(const String& n, const String& v, std::function<void(bool)> adjCb)
+            : name(n), value(v), callback(nullptr), hasAdjustment(true), adjustCallback(adjCb) {}
     };
 
     // UI Elements
@@ -56,10 +74,10 @@ class SettingsScreen : public Screen {
 
     // Setting actions
     void calibrateTouch();
-    void adjustUIScale();
-    void adjustLabelTextSize();
-    void adjustButtonTextSize();
-    void adjustGeneralTextSize();
+    void adjustUIScale(bool increase);
+    void adjustLabelTextSize(bool increase);
+    void adjustButtonTextSize(bool increase);
+    void adjustGeneralTextSize(bool increase);
     void toggleDebugMode();
     void resetSettings();
     void showAbout();
@@ -69,6 +87,10 @@ class SettingsScreen : public Screen {
     String getButtonTextSizeText();
     String getGeneralTextSizeText();
     String getDebugModeText();
+
+    // Helper methods for range-based adjustments
+    float adjustValueInRange(float currentValue, const AdjustmentRange& range, bool increase);
+    int adjustValueInRange(int currentValue, const AdjustmentRange& range, bool increase);
 };
 
 }  // namespace Screens
