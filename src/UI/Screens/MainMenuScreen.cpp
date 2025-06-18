@@ -100,35 +100,35 @@ void MainMenuScreen::createButtons() {
     logViewerButton->setCallback([this]() {
         Serial.println("Log Viewer button pressed!");
         ScreenManager::setStatusText("Opening Log Viewer...");
-        navigateTo("LogViewer");
+        this->navigateTo("LogViewer");
     });
 
     deviceManagerButton = new Widgets::Button(*lcd, buttonX, startY + buttonSpacing, buttonWidth, buttonHeight, "DEVICE MANAGER");
     deviceManagerButton->setCallback([this]() {
         Serial.println("Device Manager button pressed!");
         ScreenManager::setStatusText("Opening Device Manager...");
-        navigateTo("DeviceManager");
+        this->navigateTo("DeviceManager");
     });
 
     fileBrowserButton = new Widgets::Button(*lcd, buttonX, startY + buttonSpacing * 2, buttonWidth, buttonHeight, "FILE BROWSER");
     fileBrowserButton->setCallback([this]() {
         Serial.println("File Browser button pressed!");
         ScreenManager::setStatusText("Opening File Browser...");
-        navigateTo("FileBrowser");
+        this->navigateTo("FileBrowser");
     });
 
     settingsButton = new Widgets::Button(*lcd, buttonX, startY + buttonSpacing * 3, buttonWidth, buttonHeight, "SETTINGS");
     settingsButton->setCallback([this]() {
         Serial.println("Settings button pressed!");
         ScreenManager::setStatusText("Opening Settings...");
-        navigateTo("Settings");
+        this->navigateTo("Settings");
     });
 
     systemInfoButton = new Widgets::Button(*lcd, buttonX, startY + buttonSpacing * 4, buttonWidth, buttonHeight, "SYSTEM INFO");
     systemInfoButton->setCallback([this]() {
         Serial.println("System Info button pressed!");
         ScreenManager::setStatusText("Opening System Info...");
-        navigateTo("SystemInfo");
+        this->navigateTo("SystemInfo");
     });
 
     // Calculate scroll limits

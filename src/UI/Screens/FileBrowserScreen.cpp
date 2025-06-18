@@ -107,25 +107,43 @@ void FileBrowserScreen::createControlButtons() {
 
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
+    int margin = UIScale::scale(5);
+    int currentX = UIScale::scale(10);
 
-    backButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
+    // Create back button
+    backButton = new Widgets::Button(*lcd, currentX, buttonY,
                                      UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in FileBrowser");
         goBack();
     });
+    currentX += backButton->getWidth() + margin;
 
-    refreshButton = new Widgets::Button(*lcd, UIScale::scale(100), buttonY,
-                                        UIScale::scale(60), buttonHeight, "REFRESH");
+    // Calculate remaining space for refresh and delete buttons
+    int remainingWidth = lcd->width() - currentX - UIScale::scale(10);  // Reserve 10px right margin
+    int buttonWidth = (remainingWidth - margin) / 2;                    // Split remaining space equally
+    buttonWidth = max(buttonWidth, UIScale::scale(45));                 // Minimum 45px per button
+
+    // Create refresh button
+    refreshButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                        buttonWidth, buttonHeight, "REFRESH");
     refreshButton->setCallback([this]() {
         refreshFileList();
     });
+    currentX += refreshButton->getWidth() + margin;
 
-    deleteButton = new Widgets::Button(*lcd, UIScale::scale(170), buttonY,
-                                       UIScale::scale(60), buttonHeight, "DELETE");
+    // Create delete button
+    deleteButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                       buttonWidth, buttonHeight, "DELETE");
     deleteButton->setCallback([this]() {
         deleteSelectedFile();
     });
+
+    Serial.printf("FileBrowser buttons: BACK(%d-%d), REFRESH(%d-%d), DELETE(%d-%d), screen width: %d\n",
+                  backButton->getX(), backButton->getX() + backButton->getWidth(),
+                  refreshButton->getX(), refreshButton->getX() + refreshButton->getWidth(),
+                  deleteButton->getX(), deleteButton->getX() + deleteButton->getWidth(),
+                  lcd->width());
 }
 
 void FileBrowserScreen::refreshFileList() {

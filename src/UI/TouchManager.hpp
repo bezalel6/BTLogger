@@ -15,6 +15,11 @@ namespace UI {
 /**
  * TouchManager handles touch input and calibration for XPT2046 touch controller
  * Uses LovyanGFX's built-in calibration system for reliability
+ *
+ * Calibration versioning: The system uses a compile-time version number
+ * (TOUCH_CALIBRATION_VERSION in TouchManager.cpp) to invalidate existing
+ * calibration data when needed. Increment this value to force re-calibration
+ * on all devices while allowing new calibration data to be saved.
  */
 class TouchManager {
    public:
@@ -87,6 +92,10 @@ class TouchManager {
     static XPT2046_Bitbang* touchController;
     static TouchPoint getBitbangTouchCoordinates();
     static bool initializeBitbangTouch();
+
+    // Bitbang touch calibration methods
+    static void performBitbangTouchCalibration();
+    static void drawCalibrationCrosshair(int x, int y);
 
     // Touch pin definitions are used from Hardware/ESP32_SPI_9341.h macros:
     // TOUCH_IRQ, TOUCH_MOSI, TOUCH_MISO, TOUCH_SCK, TOUCH_CS

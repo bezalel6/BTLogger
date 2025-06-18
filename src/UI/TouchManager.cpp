@@ -6,6 +6,9 @@
 #include "../Hardware/ESP32_SPI_9341.h"
 #endif
 
+// Compile-time calibration version - increment this to invalidate all existing calibration data
+#define TOUCH_CALIBRATION_VERSION 3
+
 namespace BTLogger {
 namespace UI {
 
@@ -39,6 +42,29 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
         Serial.println("Failed to initialize software SPI touch");
         return false;
     }
+
+    // Check if we have saved calibration data for bitbang touch
+    if (hasSavedCalibration()) {
+        std::uint16_t calData[8];
+        if (loadTouchCalibration(calData)) {
+            // Extract min/max values from calibration data
+            int minRawX = min(min(calData[0], calData[2]), min(calData[4], calData[6]));
+            int maxRawX = max(max(calData[0], calData[2]), max(calData[4], calData[6]));
+            int minRawY = min(min(calData[1], calData[3]), min(calData[5], calData[7]));
+            int maxRawY = max(max(calData[1], calData[3]), max(calData[5], calData[7]));
+
+            // Set calibration on the touch controller
+            touchController->setCalibration(minRawX, maxRawX, minRawY, maxRawY);
+            Serial.println("Touch calibration loaded from storage for bitbang touch");
+        } else {
+            Serial.println("Failed to load calibration data, performing new calibration");
+            performTouchCalibration();
+        }
+    } else {
+        Serial.println("No saved touch calibration found for bitbang touch");
+        Serial.println("Starting automatic calibration...");
+        performTouchCalibration();  // This will call performBitbangTouchCalibration()
+    }
     Serial.println("TouchManager initialized with software SPI (bitbang) touch");
 #else
     // Use LovyanGFX hardware SPI touch
@@ -54,11 +80,9 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
             performTouchCalibration();
         }
     } else {
-        // No saved calibration found, use default calibration values
-        Serial.println("No saved touch calibration found, using default values");
-        std::uint16_t defaultCalData[8] = {239, 0, 319, 0, 0, 239, 0, 319};  // Default calibration for 240x320 display
-        lcd->setTouchCalibrate(defaultCalData);
-        Serial.println("Default touch calibration applied - calibrate from Settings if needed");
+        Serial.println("No saved touch calibration found for hardware SPI touch");
+        Serial.println("Starting automatic calibration...");
+        performTouchCalibration();  // This will use LovyanGFX calibration
     }
     Serial.println("TouchManager initialized with LovyanGFX hardware SPI touch");
 #endif
@@ -154,8 +178,11 @@ TouchManager::TouchPoint TouchManager::getTouchCoordinates() {
 bool TouchManager::hasSavedCalibration() {
     preferences.begin("touch_cal", true);  // Read-only mode
     bool hasValid = preferences.getBool("cal_valid", false);
+    int storedVersion = preferences.getInt("cal_version", 0);
     preferences.end();
-    return hasValid;
+
+    // Calibration is valid only if the flag is set AND the version matches
+    return hasValid && (storedVersion == TOUCH_CALIBRATION_VERSION);
 }
 
 bool TouchManager::saveTouchCalibration(std::uint16_t* calData) {
@@ -173,6 +200,8 @@ bool TouchManager::saveTouchCalibration(std::uint16_t* calData) {
     if (success) {
         // Set a flag to indicate we have valid calibration data
         preferences.putBool("cal_valid", true);
+        // Save the current calibration version
+        preferences.putInt("cal_version", TOUCH_CALIBRATION_VERSION);
 
         // Log the calibration values for debugging
         Serial.print("Saved calibration data: ");
@@ -180,7 +209,7 @@ bool TouchManager::saveTouchCalibration(std::uint16_t* calData) {
             Serial.print(calData[i]);
             if (i < 7) Serial.print(", ");
         }
-        Serial.println();
+        Serial.printf(" (version %d)\n", TOUCH_CALIBRATION_VERSION);
     } else {
         Serial.println("Error: Failed to save calibration data to preferences");
     }
@@ -209,13 +238,16 @@ bool TouchManager::loadTouchCalibration(std::uint16_t* calData) {
     bool success = (bytesRead == 8 * sizeof(std::uint16_t));
 
     if (success) {
+        // Get the stored version for logging
+        int storedVersion = preferences.getInt("cal_version", 0);
+
         // Log the loaded calibration values for debugging
         Serial.print("Loaded calibration data: ");
         for (int i = 0; i < 8; i++) {
             Serial.print(calData[i]);
             if (i < 7) Serial.print(", ");
         }
-        Serial.println();
+        Serial.printf(" (version %d)\n", storedVersion);
     } else {
         Serial.println("Error: Failed to load calibration data from preferences");
     }
@@ -229,6 +261,9 @@ void TouchManager::performTouchCalibration() {
 
     calibrating = true;
 
+#ifdef USE_BITBANG_TOUCH
+    performBitbangTouchCalibration();
+#else
     // Clear screen with yellow background for calibration
     lcd->fillScreen(0xFFE0);  // Yellow
 
@@ -257,6 +292,7 @@ void TouchManager::performTouchCalibration() {
     } else {
         Serial.println("Failed to save touch calibration");
     }
+#endif
 
     calibrating = false;
 
@@ -285,6 +321,16 @@ void TouchManager::showTouchDebugInfo() {
                   lastTouch.x, lastTouch.y, lastTouch.pressed ? "true" : "false");
     Serial.printf("Tapped: %s\n", tapped ? "true" : "false");
     Serial.printf("Calibrating: %s\n", calibrating ? "true" : "false");
+    Serial.printf("Current calibration version: %d\n", TOUCH_CALIBRATION_VERSION);
+
+    // Check stored calibration version
+    preferences.begin("touch_cal", true);
+    bool hasValid = preferences.getBool("cal_valid", false);
+    int storedVersion = preferences.getInt("cal_version", 0);
+    preferences.end();
+    Serial.printf("Stored calibration: valid=%s, version=%d\n",
+                  hasValid ? "true" : "false", storedVersion);
+
 #ifdef USE_BITBANG_TOUCH
     Serial.printf("Using software SPI touch (bitbang)\n");
 #else
@@ -317,10 +363,9 @@ TouchManager::TouchPoint TouchManager::getBitbangTouchCoordinates() {
     auto touch = touchController->getTouch();
 
     if (touch.zRaw >= 500) {  // Minimum pressure threshold
-        // Map raw coordinates to screen coordinates
-        // These values may need calibration for your specific display
-        point.x = map(touch.xRaw, 200, 3700, 0, lcd->width() - 1);
-        point.y = map(touch.yRaw, 240, 3800, 0, lcd->height() - 1);
+        // Use the touch controller's already-calibrated coordinates
+        point.x = touch.x;
+        point.y = touch.y;
         point.pressed = true;
 
         // Clamp to screen boundaries
@@ -330,6 +375,165 @@ TouchManager::TouchPoint TouchManager::getBitbangTouchCoordinates() {
 
     return point;
 }
+
+void TouchManager::performBitbangTouchCalibration() {
+    if (!lcd || !touchController) return;
+
+    Serial.println("Starting bitbang touch calibration...");
+
+    // Calibration points: top-left, top-right, bottom-left, bottom-right
+    struct CalibrationPoint {
+        int screenX, screenY;
+        int rawX, rawY;
+        bool collected;
+    };
+
+    CalibrationPoint calPoints[4] = {
+        {20, 20, 0, 0, false},                                // Top-left
+        {lcd->width() - 20, 20, 0, 0, false},                 // Top-right
+        {20, lcd->height() - 20, 0, 0, false},                // Bottom-left
+        {lcd->width() - 20, lcd->height() - 20, 0, 0, false}  // Bottom-right
+    };
+
+    lcd->fillScreen(0x0000);    // Black background
+    lcd->setTextColor(0xFFFF);  // White text
+    lcd->setTextSize(1);
+
+    for (int i = 0; i < 4; i++) {
+        lcd->fillScreen(0x0000);
+
+        // Draw instruction text
+        lcd->setCursor(10, 10);
+        lcd->printf("Calibration %d/4", i + 1);
+        lcd->setCursor(10, 25);
+        lcd->println("Touch crosshair center");
+        lcd->setCursor(10, 40);
+        lcd->println("Hold for 1 second");
+
+        // Draw crosshair at calibration point
+        drawCalibrationCrosshair(calPoints[i].screenX, calPoints[i].screenY);
+
+        // Wait for touch on the calibration point
+        bool pointCollected = false;
+        unsigned long startTime = millis();
+        const unsigned long timeout = 30000;  // 30 second timeout
+
+        while (!pointCollected && (millis() - startTime) < timeout) {
+            auto touch = touchController->getTouch();
+
+            if (touch.zRaw >= 500) {  // Touch detected - accept any touch during calibration
+                // Collect multiple samples for stability
+                int sampleCount = 0;
+                long sumX = 0, sumY = 0;
+                unsigned long sampleStart = millis();
+
+                while (millis() - sampleStart < 1000) {  // Sample for 1 second for better stability
+                    auto sampleTouch = touchController->getTouch();
+                    if (sampleTouch.zRaw >= 500) {
+                        sumX += sampleTouch.xRaw;
+                        sumY += sampleTouch.yRaw;
+                        sampleCount++;
+                    }
+                    delay(10);
+                }
+
+                if (sampleCount > 20) {  // Need at least 20 samples for good calibration
+                    calPoints[i].rawX = sumX / sampleCount;
+                    calPoints[i].rawY = sumY / sampleCount;
+                    calPoints[i].collected = true;
+                    pointCollected = true;
+
+                    Serial.printf("Calibration point %d: screen(%d,%d) -> raw(%d,%d) (%d samples)\n",
+                                  i + 1, calPoints[i].screenX, calPoints[i].screenY,
+                                  calPoints[i].rawX, calPoints[i].rawY, sampleCount);
+
+                    // Visual feedback - fill entire screen green
+                    lcd->fillScreen(0x07E0);    // Green screen
+                    lcd->setTextColor(0x0000);  // Black text on green
+                    lcd->setCursor(10, 100);
+                    lcd->printf("Point %d accepted!", i + 1);
+                    delay(1000);
+                } else {
+                    Serial.printf("Not enough samples (%d), touch and hold longer\n", sampleCount);
+                    // Show feedback to user
+                    lcd->setCursor(10, 60);
+                    lcd->setTextColor(0xF800);  // Red
+                    lcd->println("Hold longer!");
+                    delay(1000);
+                    // Redraw the crosshair and instructions
+                    lcd->fillScreen(0x0000);
+                    lcd->setCursor(10, 10);
+                    lcd->setTextColor(0xFFFF);  // White
+                    lcd->printf("Calibration %d/4", i + 1);
+                    lcd->setCursor(10, 25);
+                    lcd->println("Touch crosshair center");
+                    lcd->setCursor(10, 40);
+                    lcd->println("Hold for 1 second");
+                    drawCalibrationCrosshair(calPoints[i].screenX, calPoints[i].screenY);
+                }
+            }
+            delay(50);
+        }
+
+        if (!pointCollected) {
+            Serial.println("Calibration timeout!");
+            lcd->fillScreen(0x0000);
+            lcd->setCursor(10, 100);
+            lcd->setTextColor(0xF800);  // Red
+            lcd->println("Calibration failed!");
+            lcd->println("Timeout waiting for touch");
+            delay(2000);
+            return;
+        }
+    }
+
+    // Calculate and save calibration data
+    std::uint16_t calData[8] = {
+        (std::uint16_t)calPoints[0].rawX, (std::uint16_t)calPoints[0].rawY,  // Top-left
+        (std::uint16_t)calPoints[1].rawX, (std::uint16_t)calPoints[1].rawY,  // Top-right
+        (std::uint16_t)calPoints[2].rawX, (std::uint16_t)calPoints[2].rawY,  // Bottom-left
+        (std::uint16_t)calPoints[3].rawX, (std::uint16_t)calPoints[3].rawY   // Bottom-right
+    };
+
+    if (saveTouchCalibration(calData)) {
+        // Extract min/max values and set calibration on the touch controller
+        int minRawX = min(min(calData[0], calData[2]), min(calData[4], calData[6]));
+        int maxRawX = max(max(calData[0], calData[2]), max(calData[4], calData[6]));
+        int minRawY = min(min(calData[1], calData[3]), min(calData[5], calData[7]));
+        int maxRawY = max(max(calData[1], calData[3]), max(calData[5], calData[7]));
+
+        touchController->setCalibration(minRawX, maxRawX, minRawY, maxRawY);
+
+        Serial.println("Bitbang touch calibration saved successfully");
+        lcd->fillScreen(0x0000);
+        lcd->setCursor(10, 100);
+        lcd->setTextColor(0x07E0);  // Green
+        lcd->println("Calibration");
+        lcd->println("successful!");
+    } else {
+        Serial.println("Failed to save bitbang touch calibration");
+        lcd->fillScreen(0x0000);
+        lcd->setCursor(10, 100);
+        lcd->setTextColor(0xF800);  // Red
+        lcd->println("Failed to save");
+        lcd->println("calibration!");
+    }
+
+    delay(2000);
+}
+
+void TouchManager::drawCalibrationCrosshair(int x, int y) {
+    const int size = 10;
+    const uint16_t color = 0xFFFF;  // White
+
+    // Draw crosshair
+    lcd->drawLine(x - size, y, x + size, y, color);
+    lcd->drawLine(x, y - size, x, y + size, color);
+
+    // Draw center circle
+    lcd->fillCircle(x, y, 2, color);
+}
+
 #endif
 
 }  // namespace UI

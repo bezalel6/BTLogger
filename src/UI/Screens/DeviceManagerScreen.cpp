@@ -153,8 +153,11 @@ void DeviceManagerScreen::createControlButtons() {
 
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
+    int margin = UIScale::scale(5);
+    int currentX = UIScale::scale(10);
 
-    backButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
+    // Create back button
+    backButton = new Widgets::Button(*lcd, currentX, buttonY,
                                      UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in DeviceManager");
@@ -165,9 +168,16 @@ void DeviceManagerScreen::createControlButtons() {
         }
         goBack();
     });
+    currentX += backButton->getWidth() + margin;
 
-    scanButton = new Widgets::Button(*lcd, UIScale::scale(100), buttonY,
-                                     UIScale::scale(50), buttonHeight, scanning ? "STOP" : "SCAN");
+    // Calculate remaining space for scan and refresh buttons
+    int remainingWidth = lcd->width() - currentX - UIScale::scale(10);  // Reserve 10px right margin
+    int buttonWidth = (remainingWidth - margin) / 2;                    // Split remaining space equally
+    buttonWidth = max(buttonWidth, UIScale::scale(40));                 // Minimum 40px per button
+
+    // Create scan button
+    scanButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                     buttonWidth, buttonHeight, scanning ? "STOP" : "SCAN");
     scanButton->setCallback([this]() {
         if (bluetoothManager) {
             scanning = !scanning;
@@ -182,12 +192,20 @@ void DeviceManagerScreen::createControlButtons() {
             }
         }
     });
+    currentX += scanButton->getWidth() + margin;
 
-    refreshButton = new Widgets::Button(*lcd, UIScale::scale(160), buttonY,
-                                        UIScale::scale(70), buttonHeight, "REFRESH");
+    // Create refresh button
+    refreshButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                        buttonWidth, buttonHeight, "REFRESH");
     refreshButton->setCallback([this]() {
         refreshDeviceList();
     });
+
+    Serial.printf("DeviceManager buttons: BACK(%d-%d), SCAN(%d-%d), REFRESH(%d-%d), screen width: %d\n",
+                  backButton->getX(), backButton->getX() + backButton->getWidth(),
+                  scanButton->getX(), scanButton->getX() + scanButton->getWidth(),
+                  refreshButton->getX(), refreshButton->getX() + refreshButton->getWidth(),
+                  lcd->width());
 }
 
 void DeviceManagerScreen::drawHeader() {

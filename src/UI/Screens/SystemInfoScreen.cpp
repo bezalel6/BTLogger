@@ -77,25 +77,44 @@ void SystemInfoScreen::createButtons() {
 
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
+    int margin = UIScale::scale(5);
+    int currentX = UIScale::scale(10);
 
-    backButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
+    // Create back button
+    backButton = new Widgets::Button(*lcd, currentX, buttonY,
                                      UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in SystemInfo");
         goBack();
     });
+    currentX += backButton->getWidth() + margin;
 
-    touchCalButton = new Widgets::Button(*lcd, UIScale::scale(100), buttonY,
-                                         UIScale::scale(80), buttonHeight, "TOUCH CAL");
+    // Create touch calibration button - calculate available space
+    int remainingWidth = lcd->width() - currentX - UIScale::scale(10);         // Reserve 10px right margin
+    int touchCalWidth = min(UIScale::scale(90), remainingWidth / 2 - margin);  // Take up to half remaining space
+
+    touchCalButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                         touchCalWidth, buttonHeight, "CAL");
     touchCalButton->setCallback([this]() {
         performTouchCalibration();
     });
+    currentX += touchCalButton->getWidth() + margin;
 
-    debugButton = new Widgets::Button(*lcd, UIScale::scale(190), buttonY,
-                                      UIScale::scale(50), buttonHeight, "DEBUG");
+    // Create debug button with remaining space
+    int debugWidth = lcd->width() - currentX - UIScale::scale(10);  // Use remaining space minus right margin
+    debugWidth = max(debugWidth, UIScale::scale(40));               // Minimum 40px
+
+    debugButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                      debugWidth, buttonHeight, "DEBUG");
     debugButton->setCallback([this]() {
         showTouchDebugInfo();
     });
+
+    Serial.printf("Header buttons: BACK(%d-%d), CAL(%d-%d), DEBUG(%d-%d), screen width: %d\n",
+                  backButton->getX(), backButton->getX() + backButton->getWidth(),
+                  touchCalButton->getX(), touchCalButton->getX() + touchCalButton->getWidth(),
+                  debugButton->getX(), debugButton->getX() + debugButton->getWidth(),
+                  lcd->width());
 }
 
 void SystemInfoScreen::drawHeader() {

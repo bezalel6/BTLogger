@@ -80,16 +80,16 @@ bool Button::handleTouch(int x, int y, bool touched) {
         if (!pressed) {
             pressed = true;
             Serial.printf("Button '%s' pressed\n", text.c_str());
+
+            // Trigger callback immediately on press
+            if (callback) {
+                Serial.printf("Button '%s' activated\n", text.c_str());
+                callback();
+            }
         }
     } else {
         if (pressed) {
             pressed = false;
-
-            // Only trigger callback if touch was released inside button
-            if (touchInside && callback) {
-                Serial.printf("Button '%s' activated\n", text.c_str());
-                callback();
-            }
         }
     }
 

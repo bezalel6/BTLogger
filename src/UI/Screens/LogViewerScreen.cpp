@@ -25,30 +25,48 @@ void LogViewerScreen::activate() {
     Screen::activate();
 
     if (!backButton) {
-        // Create control buttons - larger and moved away from edge
+        // Create control buttons with proper layout
         int buttonHeight = UIScale::scale(35);
         int buttonY = UIScale::scale(15);
+        int margin = UIScale::scale(5);
+        int currentX = UIScale::scale(10);
 
-        backButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
+        // Create back button
+        backButton = new Widgets::Button(*lcd, currentX, buttonY,
                                          UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
         backButton->setCallback([this]() {
             Serial.println("Back button pressed in LogViewer");
             goBack();
         });
+        currentX += backButton->getWidth() + margin;
 
-        clearButton = new Widgets::Button(*lcd, UIScale::scale(75), buttonY,
-                                          UIScale::scale(50), buttonHeight, "CLEAR");
+        // Calculate remaining space for clear and pause buttons
+        int remainingWidth = lcd->width() - currentX - UIScale::scale(10);  // Reserve 10px right margin
+        int buttonWidth = (remainingWidth - margin) / 2;                    // Split remaining space equally
+        buttonWidth = max(buttonWidth, UIScale::scale(40));                 // Minimum 40px per button
+
+        // Create clear button
+        clearButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                          buttonWidth, buttonHeight, "CLEAR");
         clearButton->setCallback([this]() {
             clearLogs();
         });
+        currentX += clearButton->getWidth() + margin;
 
-        pauseButton = new Widgets::Button(*lcd, UIScale::scale(135), buttonY,
-                                          UIScale::scale(50), buttonHeight, "PAUSE");
+        // Create pause button
+        pauseButton = new Widgets::Button(*lcd, currentX, buttonY,
+                                          buttonWidth, buttonHeight, "PAUSE");
         pauseButton->setCallback([this]() {
             paused = !paused;
             pauseButton->setText(paused ? "RESUME" : "PAUSE");
             ScreenManager::setStatusText(paused ? "Logging paused" : "Logging resumed");
         });
+
+        Serial.printf("LogViewer buttons: BACK(%d-%d), CLEAR(%d-%d), PAUSE(%d-%d), screen width: %d\n",
+                      backButton->getX(), backButton->getX() + backButton->getWidth(),
+                      clearButton->getX(), clearButton->getX() + clearButton->getWidth(),
+                      pauseButton->getX(), pauseButton->getX() + pauseButton->getWidth(),
+                      lcd->width());
     }
 
     // Calculate visible lines
