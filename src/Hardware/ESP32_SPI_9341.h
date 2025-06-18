@@ -91,6 +91,7 @@ class LGFX : public lgfx::LGFX_Device {
             _panel_instance.setLight(&_light_instance);  // バックライトをパネルにセットします。
         }
 
+#ifndef USE_BITBANG_TOUCH
         {  // タッチスクリーン制御の設定を行います。（必要なければ削除）
             auto cfg = _touch_instance.config();
 
@@ -113,6 +114,7 @@ class LGFX : public lgfx::LGFX_Device {
             _touch_instance.config(cfg);
             _panel_instance.setTouch(&_touch_instance);  // タッチスクリーンをパネルにセットします。
         }
+#endif
 
         setPanel(&_panel_instance);  // 使用するパネルをセットします。
     }

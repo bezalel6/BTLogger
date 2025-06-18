@@ -54,9 +54,11 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
             performTouchCalibration();
         }
     } else {
-        // No saved calibration found, perform calibration
-        Serial.println("No saved touch calibration found, performing calibration");
-        performTouchCalibration();
+        // No saved calibration found, use default calibration values
+        Serial.println("No saved touch calibration found, using default values");
+        std::uint16_t defaultCalData[8] = {239, 0, 319, 0, 0, 239, 0, 319};  // Default calibration for 240x320 display
+        lcd->setTouchCalibrate(defaultCalData);
+        Serial.println("Default touch calibration applied - calibrate from Settings if needed");
     }
     Serial.println("TouchManager initialized with LovyanGFX hardware SPI touch");
 #endif
@@ -108,7 +110,9 @@ bool TouchManager::wasTappedInArea(int x, int y, int width, int height) {
 }
 
 bool TouchManager::needsCalibration() {
-    return !hasSavedCalibration();
+    // Only return true if we want to force recalibration
+    // Normal operation should work with default values
+    return false;
 }
 
 void TouchManager::startCalibration() {

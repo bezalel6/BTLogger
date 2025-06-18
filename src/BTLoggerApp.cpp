@@ -60,10 +60,10 @@ bool BTLoggerApp::initialize() {
     UI::ToastManager::initialize(lcd);
     UI::CriticalErrorHandler::initialize(lcd);
 
-    // Wait for touch calibration to complete if needed
-    while (UI::TouchManager::needsCalibration()) {
-        UI::TouchManager::update();
-        delay(50);
+    // Skip initial calibration to avoid infinite loop
+    // Touch calibration can be done later from the Settings screen
+    if (UI::TouchManager::needsCalibration()) {
+        Serial.println("Touch calibration needed - can be done from Settings screen");
     }
 
     // Initialize screen system
