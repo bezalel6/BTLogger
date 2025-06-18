@@ -26,13 +26,13 @@ bool SDCardManager::initialize() {
 
     if (!SD.begin(SS, spi, 80000000)) {
         Serial.println("Card Mount Failed");
-        return;
+        return false;
     }
     uint8_t cardType = SD.cardType();
 
     if (cardType == CARD_NONE) {
         Serial.println("No SD card attached");
-        return;
+        return false;
     }
 
     Serial.print("SD Card Type: ");

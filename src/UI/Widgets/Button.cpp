@@ -130,6 +130,11 @@ void Button::setColors(uint16_t bg, uint16_t bgPress, uint16_t border, uint16_t 
     borderColorPressed = (border == 0x8410) ? 0xFFFF : border;
 }
 
+void Button::setPosition(int x, int y) {
+    posX = x;
+    posY = y;
+}
+
 }  // namespace Widgets
 }  // namespace UI
 }  // namespace BTLogger

@@ -1,13 +1,9 @@
 #pragma once
 
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <Arduino.h>
-#include <lgfx/v1/lgfx_fonts.hpp>
 #include <functional>
-
-// Forward declaration
-namespace lgfx {
-class LGFX_Device;
-}
 
 namespace BTLogger {
 namespace UI {
@@ -55,6 +51,7 @@ class Button {
     void setEnabled(bool enable);
     void setCallback(std::function<void()> cb);
     void setColors(uint16_t bg, uint16_t bgPress, uint16_t border, uint16_t txt);
+    void setPosition(int x, int y);
 
     // State
     bool isPressed() const;
