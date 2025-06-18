@@ -107,34 +107,35 @@ void FileBrowserScreen::createControlButtons() {
 
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
-    int margin = UIScale::scale(5);
-    int currentX = UIScale::scale(10);
 
-    // Create back button
+    // Calculate button widths to divide the full screen width
+    int totalWidth = lcd->width();
+    int buttonCount = 3;  // BACK, REFRESH, DELETE
+    int buttonWidth = totalWidth / buttonCount;
+
+    int currentX = 0;
+
+    // Create back button - takes 1/3 of width
     backButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                     UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
+                                     buttonWidth, buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in FileBrowser");
         goBack();
     });
-    currentX += backButton->getWidth() + margin;
+    currentX += buttonWidth;
 
-    // Calculate remaining space for refresh and delete buttons
-    int remainingWidth = lcd->width() - currentX - UIScale::scale(10);  // Reserve 10px right margin
-    int buttonWidth = (remainingWidth - margin) / 2;                    // Split remaining space equally
-    buttonWidth = max(buttonWidth, UIScale::scale(45));                 // Minimum 45px per button
-
-    // Create refresh button
+    // Create refresh button - takes 1/3 of width
     refreshButton = new Widgets::Button(*lcd, currentX, buttonY,
                                         buttonWidth, buttonHeight, "REFRESH");
     refreshButton->setCallback([this]() {
         refreshFileList();
     });
-    currentX += refreshButton->getWidth() + margin;
+    currentX += buttonWidth;
 
-    // Create delete button
+    // Create delete button - takes remaining width (handles any rounding)
+    int remainingWidth = totalWidth - currentX;
     deleteButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                       buttonWidth, buttonHeight, "DELETE");
+                                       remainingWidth, buttonHeight, "DELETE");
     deleteButton->setCallback([this]() {
         deleteSelectedFile();
     });
@@ -327,12 +328,60 @@ void FileBrowserScreen::deleteSelectedFile() {
     }
 }
 
-String FileBrowserScreen::formatFileInfo(const FileInfo& file) {
-    if (file.isDirectory) {
-        return "[DIR] " + file.name;
-    } else {
-        return file.name + " (" + formatFileSize(file.size) + ")";
+// Helper function to clip text with ellipsis if it's too long
+String FileBrowserScreen::clipText(const String& text, int maxWidth, int textSize) {
+    if (!lcd) return text;
+
+    int textWidth = UIScale::calculateTextWidth(text, textSize);
+    if (textWidth <= maxWidth) {
+        return text;  // Text fits, no clipping needed
     }
+
+    // Calculate how many characters we can fit with "..." at the end
+    int ellipsisWidth = UIScale::calculateTextWidth("...", textSize);
+    int availableWidth = maxWidth - ellipsisWidth;
+
+    if (availableWidth <= 0) {
+        return "...";  // Not enough space for anything
+    }
+
+    // Binary search to find the maximum number of characters that fit
+    int left = 0, right = text.length();
+    int bestFit = 0;
+
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        int midWidth = UIScale::calculateTextWidth(text.substring(0, mid), textSize);
+
+        if (midWidth <= availableWidth) {
+            bestFit = mid;
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    if (bestFit == 0) {
+        return "...";
+    }
+
+    return text.substring(0, bestFit) + "...";
+}
+
+String FileBrowserScreen::formatFileInfo(const FileInfo& file) {
+    String prefix = file.isDirectory ? "[DIR] " : "";
+    String suffix = file.isDirectory ? "" : " (" + formatFileSize(file.size) + ")";
+
+    // Calculate available width for file name
+    int buttonWidth = lcd->width() - UIScale::scale(20);  // Account for margins
+    int prefixWidth = UIScale::calculateTextWidth(prefix, UIScale::getButtonTextSize());
+    int suffixWidth = UIScale::calculateTextWidth(suffix, UIScale::getButtonTextSize());
+    int availableForName = buttonWidth - prefixWidth - suffixWidth - UIScale::scale(16);  // Account for button padding
+
+    // Clip file name if necessary
+    String clippedName = clipText(file.name, availableForName, UIScale::getButtonTextSize());
+
+    return prefix + clippedName + suffix;
 }
 
 String FileBrowserScreen::formatFileSize(size_t bytes) {

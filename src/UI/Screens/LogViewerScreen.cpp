@@ -25,37 +25,38 @@ void LogViewerScreen::activate() {
     Screen::activate();
 
     if (!backButton) {
-        // Create control buttons with proper layout
+        // Create control buttons with new sizing strategy
         int buttonHeight = UIScale::scale(35);
         int buttonY = UIScale::scale(15);
-        int margin = UIScale::scale(5);
-        int currentX = UIScale::scale(10);
 
-        // Create back button
+        // Calculate button widths to divide the full screen width
+        int totalWidth = lcd->width();
+        int buttonCount = 3;  // BACK, CLEAR, PAUSE
+        int buttonWidth = totalWidth / buttonCount;
+
+        int currentX = 0;
+
+        // Create back button - takes 1/3 of width
         backButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                         UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
+                                         buttonWidth, buttonHeight, "BACK");
         backButton->setCallback([this]() {
             Serial.println("Back button pressed in LogViewer");
             goBack();
         });
-        currentX += backButton->getWidth() + margin;
+        currentX += buttonWidth;
 
-        // Calculate remaining space for clear and pause buttons
-        int remainingWidth = lcd->width() - currentX - UIScale::scale(10);  // Reserve 10px right margin
-        int buttonWidth = (remainingWidth - margin) / 2;                    // Split remaining space equally
-        buttonWidth = max(buttonWidth, UIScale::scale(40));                 // Minimum 40px per button
-
-        // Create clear button
+        // Create clear button - takes 1/3 of width
         clearButton = new Widgets::Button(*lcd, currentX, buttonY,
                                           buttonWidth, buttonHeight, "CLEAR");
         clearButton->setCallback([this]() {
             clearLogs();
         });
-        currentX += clearButton->getWidth() + margin;
+        currentX += buttonWidth;
 
-        // Create pause button
+        // Create pause button - takes remaining width (handles any rounding)
+        int remainingWidth = totalWidth - currentX;
         pauseButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                          buttonWidth, buttonHeight, "PAUSE");
+                                          remainingWidth, buttonHeight, "PAUSE");
         pauseButton->setCallback([this]() {
             paused = !paused;
             pauseButton->setText(paused ? "RESUME" : "PAUSE");
@@ -160,16 +161,10 @@ void LogViewerScreen::drawHeader() {
     // Clear header area
     lcd->fillRect(0, 0, lcd->width(), HEADER_HEIGHT, 0x0000);
 
-    // Draw buttons
+    // Draw buttons - no title anymore
     if (backButton) backButton->draw();
     if (clearButton) clearButton->draw();
     if (pauseButton) pauseButton->draw();
-
-    // Draw title
-    lcd->setTextColor(0x07FF);  // Cyan
-    lcd->setTextSize(UIScale::scale(2));
-    lcd->setCursor(UIScale::scale(195), UIScale::scale(22));
-    lcd->print("LOGS");
 
     // Draw separator line
     lcd->drawFastHLine(0, HEADER_HEIGHT - 1, lcd->width(), 0x8410);

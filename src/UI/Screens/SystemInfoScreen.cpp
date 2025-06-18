@@ -77,35 +77,35 @@ void SystemInfoScreen::createButtons() {
 
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
-    int margin = UIScale::scale(5);
-    int currentX = UIScale::scale(10);
 
-    // Create back button
+    // Calculate button widths to divide the full screen width
+    int totalWidth = lcd->width();
+    int buttonCount = 3;  // BACK, CAL, DEBUG
+    int buttonWidth = totalWidth / buttonCount;
+
+    int currentX = 0;
+
+    // Create back button - takes 1/3 of width
     backButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                     UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
+                                     buttonWidth, buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in SystemInfo");
         goBack();
     });
-    currentX += backButton->getWidth() + margin;
+    currentX += buttonWidth;
 
-    // Create touch calibration button - calculate available space
-    int remainingWidth = lcd->width() - currentX - UIScale::scale(10);         // Reserve 10px right margin
-    int touchCalWidth = min(UIScale::scale(90), remainingWidth / 2 - margin);  // Take up to half remaining space
-
+    // Create touch calibration button - takes 1/3 of width
     touchCalButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                         touchCalWidth, buttonHeight, "CAL");
+                                         buttonWidth, buttonHeight, "CAL");
     touchCalButton->setCallback([this]() {
         performTouchCalibration();
     });
-    currentX += touchCalButton->getWidth() + margin;
+    currentX += buttonWidth;
 
-    // Create debug button with remaining space
-    int debugWidth = lcd->width() - currentX - UIScale::scale(10);  // Use remaining space minus right margin
-    debugWidth = max(debugWidth, UIScale::scale(40));               // Minimum 40px
-
+    // Create debug button - takes remaining width (handles any rounding)
+    int remainingWidth = totalWidth - currentX;
     debugButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                      debugWidth, buttonHeight, "DEBUG");
+                                      remainingWidth, buttonHeight, "DEBUG");
     debugButton->setCallback([this]() {
         showTouchDebugInfo();
     });

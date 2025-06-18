@@ -70,6 +70,7 @@ class FileBrowserScreen : public Screen {
     void scrollDown();
     String formatFileInfo(const FileInfo& file);
     String formatFileSize(size_t bytes);
+    String clipText(const String& text, int maxWidth, int textSize);
 };
 
 }  // namespace Screens

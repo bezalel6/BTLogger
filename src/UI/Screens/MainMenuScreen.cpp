@@ -93,7 +93,7 @@ void MainMenuScreen::createButtons() {
     int buttonWidth = UIScale::scale(200);
     int buttonHeight = UIScale::scale(35);
     int buttonX = (lcd->width() - buttonWidth) / 2;
-    int startY = UIScale::scale(70);
+    int startY = UIScale::scale(15);  // Start from top since no title
     int buttonSpacing = UIScale::scale(45);
 
     logViewerButton = new Widgets::Button(*lcd, buttonX, startY, buttonWidth, buttonHeight, "LOG VIEWER");
@@ -143,18 +143,7 @@ void MainMenuScreen::drawMenu() {
     // Clear screen
     lcd->fillScreen(0x0000);
 
-    // Title
-    lcd->setTextColor(0x07FF);  // Cyan
-    lcd->setTextSize(UIScale::scale(3));
-    int titleY = UIScale::scale(15);
-    lcd->setCursor(UIScale::scale(30), titleY);
-    lcd->print("BTLogger");
-
-    // Title line
-    int lineY = titleY + UIScale::scale(30);
-    lcd->drawFastHLine(UIScale::scale(10), lineY, lcd->width() - UIScale::scale(20), 0x07FF);
-
-    // Update button positions and draw visible ones
+    // No title anymore - just update button positions and draw visible ones
     updateButtonPositions();
 
     // Draw scroll indicators
@@ -164,7 +153,7 @@ void MainMenuScreen::drawMenu() {
         if (scrollOffset > 0) {
             lcd->setTextColor(0xFFFF);
             lcd->setTextSize(1);
-            lcd->setCursor(indicatorX, lineY + UIScale::scale(10));
+            lcd->setCursor(indicatorX, UIScale::scale(10));
             lcd->print("^");
         }
 
@@ -180,13 +169,12 @@ void MainMenuScreen::drawMenu() {
 void MainMenuScreen::handleScrolling(int x, int y, bool wasTapped) {
     if (!wasTapped || maxScrollOffset == 0) return;
 
-    int lineY = UIScale::scale(15) + UIScale::scale(30);
     int scrollZoneHeight = UIScale::scale(30);
 
     // Check for scroll in right edge
     if (x > lcd->width() - UIScale::scale(30)) {
         // Touch in top scroll zone
-        if (y >= lineY && y < lineY + scrollZoneHeight) {
+        if (y >= 0 && y < scrollZoneHeight) {
             scrollUp();
             return;
         }
@@ -202,7 +190,7 @@ void MainMenuScreen::handleScrolling(int x, int y, bool wasTapped) {
 void MainMenuScreen::updateButtonPositions() {
     if (!lcd) return;
 
-    int startY = UIScale::scale(70);
+    int startY = UIScale::scale(15);  // Start higher since no title
     int buttonSpacing = UIScale::scale(45);
     int buttonX = (lcd->width() - UIScale::scale(200)) / 2;
 
@@ -213,9 +201,8 @@ void MainMenuScreen::updateButtonPositions() {
             int newY = startY + (i * buttonSpacing) - (scrollOffset * buttonSpacing);
             buttons[i]->setPosition(buttonX, newY);
 
-            // Only draw if visible
-            int lineY = UIScale::scale(15) + UIScale::scale(30);
-            if (newY >= lineY + UIScale::scale(10) && newY < lcd->height() - FOOTER_HEIGHT) {
+            // Only draw if visible (starts from top of screen now)
+            if (newY >= UIScale::scale(5) && newY < lcd->height() - FOOTER_HEIGHT) {
                 buttons[i]->draw();
             }
         }

@@ -7,7 +7,7 @@
 #endif
 
 // Compile-time calibration version - increment this to invalidate all existing calibration data
-#define TOUCH_CALIBRATION_VERSION 3
+#define TOUCH_CALIBRATION_VERSION 5
 
 namespace BTLogger {
 namespace UI {
@@ -53,8 +53,8 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
             int minRawY = min(min(calData[1], calData[3]), min(calData[5], calData[7]));
             int maxRawY = max(max(calData[1], calData[3]), max(calData[5], calData[7]));
 
-            // Set calibration on the touch controller
-            touchController->setCalibration(minRawX, maxRawX, minRawY, maxRawY);
+            // Set calibration on the touch controller (swap X values if horizontally flipped)
+            touchController->setCalibration(maxRawX, minRawX, minRawY, maxRawY);
             Serial.println("Touch calibration loaded from storage for bitbang touch");
         } else {
             Serial.println("Failed to load calibration data, performing new calibration");
@@ -502,7 +502,8 @@ void TouchManager::performBitbangTouchCalibration() {
         int minRawY = min(min(calData[1], calData[3]), min(calData[5], calData[7]));
         int maxRawY = max(max(calData[1], calData[3]), max(calData[5], calData[7]));
 
-        touchController->setCalibration(minRawX, maxRawX, minRawY, maxRawY);
+        // Set calibration (swap X values if horizontally flipped)
+        touchController->setCalibration(maxRawX, minRawX, minRawY, maxRawY);
 
         Serial.println("Bitbang touch calibration saved successfully");
         lcd->fillScreen(0x0000);

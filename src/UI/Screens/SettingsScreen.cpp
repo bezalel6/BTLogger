@@ -91,8 +91,9 @@ void SettingsScreen::createControlButtons() {
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
 
-    backButton = new Widgets::Button(*lcd, UIScale::scale(10), buttonY,
-                                     UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
+    // Use full width for back button since it's the only header button
+    backButton = new Widgets::Button(*lcd, 0, buttonY,
+                                     lcd->width(), buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in Settings");
         goBack();
@@ -193,14 +194,8 @@ void SettingsScreen::drawSettings() {
     // Clear screen
     lcd->fillScreen(0x0000);
 
-    // Draw header
+    // Draw header - just buttons, no title
     if (backButton) backButton->draw();
-
-    // Draw title
-    lcd->setTextColor(0x07FF);                          // Cyan
-    lcd->setTextSize(UIScale::getLabelTextSize() + 1);  // Larger for title
-    lcd->setCursor(UIScale::scale(100), UIScale::scale(22));
-    lcd->print("SETTINGS");
 
     lcd->drawFastHLine(0, HEADER_HEIGHT - 1, lcd->width(), 0x8410);
 

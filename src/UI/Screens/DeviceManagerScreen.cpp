@@ -153,12 +153,17 @@ void DeviceManagerScreen::createControlButtons() {
 
     int buttonHeight = UIScale::scale(35);
     int buttonY = UIScale::scale(15);
-    int margin = UIScale::scale(5);
-    int currentX = UIScale::scale(10);
 
-    // Create back button
+    // Calculate button widths to divide the full screen width
+    int totalWidth = lcd->width();
+    int buttonCount = 3;  // BACK, SCAN, REFRESH
+    int buttonWidth = totalWidth / buttonCount;
+
+    int currentX = 0;
+
+    // Create back button - takes 1/3 of width
     backButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                     UIScale::scale(BACK_BUTTON_WIDTH), buttonHeight, "BACK");
+                                     buttonWidth, buttonHeight, "BACK");
     backButton->setCallback([this]() {
         Serial.println("Back button pressed in DeviceManager");
         // Stop scanning when leaving
@@ -168,14 +173,9 @@ void DeviceManagerScreen::createControlButtons() {
         }
         goBack();
     });
-    currentX += backButton->getWidth() + margin;
+    currentX += buttonWidth;
 
-    // Calculate remaining space for scan and refresh buttons
-    int remainingWidth = lcd->width() - currentX - UIScale::scale(10);  // Reserve 10px right margin
-    int buttonWidth = (remainingWidth - margin) / 2;                    // Split remaining space equally
-    buttonWidth = max(buttonWidth, UIScale::scale(40));                 // Minimum 40px per button
-
-    // Create scan button
+    // Create scan button - takes 1/3 of width
     scanButton = new Widgets::Button(*lcd, currentX, buttonY,
                                      buttonWidth, buttonHeight, scanning ? "STOP" : "SCAN");
     scanButton->setCallback([this]() {
@@ -192,11 +192,12 @@ void DeviceManagerScreen::createControlButtons() {
             }
         }
     });
-    currentX += scanButton->getWidth() + margin;
+    currentX += buttonWidth;
 
-    // Create refresh button
+    // Create refresh button - takes remaining width (handles any rounding)
+    int remainingWidth = totalWidth - currentX;
     refreshButton = new Widgets::Button(*lcd, currentX, buttonY,
-                                        buttonWidth, buttonHeight, "REFRESH");
+                                        remainingWidth, buttonHeight, "REFRESH");
     refreshButton->setCallback([this]() {
         refreshDeviceList();
     });
@@ -333,10 +334,60 @@ void DeviceManagerScreen::updateDeviceList() {
     }
 }
 
+// Helper function to clip text with ellipsis if it's too long
+String DeviceManagerScreen::clipText(const String& text, int maxWidth, int textSize) {
+    if (!lcd) return text;
+
+    int textWidth = UIScale::calculateTextWidth(text, textSize);
+    if (textWidth <= maxWidth) {
+        return text;  // Text fits, no clipping needed
+    }
+
+    // Calculate how many characters we can fit with "..." at the end
+    int ellipsisWidth = UIScale::calculateTextWidth("...", textSize);
+    int availableWidth = maxWidth - ellipsisWidth;
+
+    if (availableWidth <= 0) {
+        return "...";  // Not enough space for anything
+    }
+
+    // Binary search to find the maximum number of characters that fit
+    int left = 0, right = text.length();
+    int bestFit = 0;
+
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        int midWidth = UIScale::calculateTextWidth(text.substring(0, mid), textSize);
+
+        if (midWidth <= availableWidth) {
+            bestFit = mid;
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    if (bestFit == 0) {
+        return "...";
+    }
+
+    return text.substring(0, bestFit) + "...";
+}
+
 String DeviceManagerScreen::formatDeviceInfo(const DeviceInfo& device) {
     String status = device.connected ? "CONN" : "DISC";
     String signalStr = String(device.rssi) + "dBm";
-    return device.name + " [" + status + "] " + signalStr;
+
+    // Calculate available width for device name
+    // Button width minus space for status and signal strength
+    int buttonWidth = lcd->width() - UIScale::scale(20);  // Account for margins
+    int statusWidth = UIScale::calculateTextWidth(" [" + status + "] " + signalStr, UIScale::getButtonTextSize());
+    int availableForName = buttonWidth - statusWidth - UIScale::scale(16);  // Account for button padding
+
+    // Clip device name if necessary
+    String clippedName = clipText(device.name, availableForName, UIScale::getButtonTextSize());
+
+    return clippedName + " [" + status + "] " + signalStr;
 }
 
 void DeviceManagerScreen::connectToDevice(const String& address) {

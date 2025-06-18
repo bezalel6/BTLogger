@@ -72,6 +72,7 @@ class DeviceManagerScreen : public Screen {
     void scrollUp();
     void scrollDown();
     String formatDeviceInfo(const DeviceInfo& device);
+    String clipText(const String& text, int maxWidth, int textSize);
 };
 
 }  // namespace Screens
