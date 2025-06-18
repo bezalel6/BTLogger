@@ -136,8 +136,9 @@ void BluetoothManager::onDeviceFound(BLEAdvertisedDevice advertisedDevice) {
 
         // Check if we already have this device
         bool alreadyExists = false;
-        for (const auto& device : availableDevices) {
-            if (device.getAddress().toString() == deviceAddress) {
+        for (auto& device : availableDevices) {
+            String existingAddress = String(device.getAddress().toString().c_str());
+            if (existingAddress == deviceAddress) {
                 alreadyExists = true;
                 break;
             }
@@ -169,7 +170,8 @@ bool BluetoothManager::connectToDevice(const String& address) {
     // Find the advertised device
     BLEAdvertisedDevice* targetDevice = nullptr;
     for (auto& device : availableDevices) {
-        if (device.getAddress().toString() == address) {
+        String deviceAddress = String(device.getAddress().toString().c_str());
+        if (deviceAddress == address) {
             targetDevice = &device;
             break;
         }
@@ -363,9 +365,9 @@ std::vector<String> BluetoothManager::getConnectedDeviceNames() const {
 
 std::vector<String> BluetoothManager::getAvailableDevices() const {
     std::vector<String> devices;
-    for (const auto& device : availableDevices) {
-        String name = device.getName().c_str();
-        String address = device.getAddress().toString().c_str();
+    for (auto& device : const_cast<std::vector<BLEAdvertisedDevice>&>(availableDevices)) {
+        String name = String(device.getName().c_str());
+        String address = String(device.getAddress().toString().c_str());
         devices.push_back(name + " (" + address + ")");
     }
     return devices;
