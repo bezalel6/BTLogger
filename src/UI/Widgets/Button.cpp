@@ -5,137 +5,129 @@ namespace BTLogger {
 namespace UI {
 namespace Widgets {
 
-Button::Button(lgfx::LGFX_Device& display, int x, int y, int width, int height, const String& text)
-    : lcd(display), x(x), y(y), width(width), height(height), text(text), colorNormal(Colors::BLUE), colorPressed(Colors::BLUE_LIGHT), colorDisabled(Colors::GRAY), colorText(Colors::WHITE), enabled(true), visible(true), pressed(false), lastTouchState(false), pressTime(0) {
+Button::Button(lgfx::LGFX_Device& display, int x, int y, int w, int h, const String& label)
+    : lcd(&display), posX(x), posY(y), width(w), height(h), text(label), bgColor(0x0000), borderColor(0x8410), textColor(0xFFFF), bgColorPressed(0x8410), borderColorPressed(0xFFFF), textColorPressed(0x0000), pressed(false), enabled(true), callback(nullptr) {
+    // Auto-adjust width if it's too small for the text
+    adjustWidthForText();
 }
 
-void Button::setColors(uint16_t normal, uint16_t pressed, uint16_t disabled, uint16_t textColor) {
-    colorNormal = normal;
-    colorPressed = pressed;
-    colorDisabled = disabled;
-    colorText = textColor;
+Button::~Button() {
 }
 
-void Button::getBounds(int& outX, int& outY, int& outWidth, int& outHeight) const {
-    outX = x;
-    outY = y;
-    outWidth = width;
-    outHeight = height;
-}
+void Button::adjustWidthForText() {
+    int textSize = UIScale::getButtonTextSize();
+    int requiredWidth = UIScale::calculateTextWidth(text, textSize) + UIScale::scale(16);  // 8px padding on each side
 
-void Button::update() {
-    if (!visible || !enabled) {
-        return;
-    }
-
-    // Handle press animation timeout
-    if (pressed && (millis() - pressTime > PRESS_DURATION)) {
-        pressed = false;
+    if (width < requiredWidth) {
+        width = requiredWidth;
+        Serial.printf("Button '%s' width adjusted from %d to %d (text size %d)\n",
+                      text.c_str(), width - (requiredWidth - width), width, textSize);
     }
 }
 
-bool Button::handleTouch(int touchX, int touchY, bool touched) {
-    if (!visible || !enabled) {
-        return false;
-    }
-
-    bool wasInside = isPointInside(touchX, touchY);
-
-    if (touched && wasInside && !lastTouchState) {
-        // Touch started - activate immediately
-        pressed = true;
-        pressTime = millis();
-        lastTouchState = true;
-        Serial.printf("Button '%s' activated\n", text.c_str());
-
-        // Execute callback immediately on press
-        if (callback) {
-            callback();
-        }
-        return true;
-    } else if (!touched) {
-        lastTouchState = false;
-    }
-
-    return false;
+void Button::setText(const String& newText) {
+    text = newText;
+    adjustWidthForText();
 }
 
 void Button::draw() {
-    if (!visible) {
-        return;
-    }
+    if (!lcd) return;
 
-    if (!enabled) {
-        drawButton(colorDisabled);
-    } else if (pressed) {
-        drawButton(colorPressed);
-    } else {
-        drawButton(colorNormal);
-    }
-}
+    // Choose colors based on state
+    uint16_t currentBg = pressed ? bgColorPressed : bgColor;
+    uint16_t currentBorder = pressed ? borderColorPressed : borderColor;
+    uint16_t currentText = pressed ? textColorPressed : textColor;
 
-void Button::drawPressed() {
-    if (visible) {
-        drawButton(colorPressed);
-    }
-}
+    // Draw button background
+    lcd->fillRect(posX, posY, width, height, currentBg);
 
-void Button::drawNormal() {
-    if (visible) {
-        drawButton(enabled ? colorNormal : colorDisabled);
-    }
-}
-
-bool Button::isPointInside(int px, int py) const {
-    return (px >= x && px < x + width && py >= y && py < y + height);
-}
-
-void Button::drawButton(uint16_t backgroundColor) {
-    // Draw shadow (offset by 2 pixels)
-    if (enabled && !pressed) {
-        lcd.fillRoundRect(x + 2, y + 2, width, height, UIScale::scale(5), Colors::BLACK);
-    }
-
-    // Draw background
-    lcd.fillRoundRect(x, y, width, height, UIScale::scale(5), backgroundColor);
-
-    // Draw 3D border effect
-    if (enabled) {
-        if (pressed) {
-            // Pressed state - darker border
-            lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::GRAY);
-            lcd.drawRoundRect(x + 1, y + 1, width - 2, height - 2, UIScale::scale(4), Colors::WHITE);
-        } else {
-            // Normal state - raised border effect
-            lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::WHITE);
-            lcd.drawRoundRect(x + 1, y + 1, width - 2, height - 2, UIScale::scale(4), Colors::LIGHT_GRAY);
-        }
-    } else {
-        // Disabled state - simple gray border
-        lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::GRAY);
-    }
+    // Draw border
+    lcd->drawRect(posX, posY, width, height, currentBorder);
 
     // Draw text
-    lcd.setTextColor(colorText);
-    lcd.setTextSize(FONT_SIZE);
+    if (!text.isEmpty()) {
+        int textSize = UIScale::getButtonTextSize();
+        lcd->setTextSize(textSize);
+        lcd->setTextColor(currentText);
 
-    int textX = getTextX();
-    int textY = getTextY();
+        // Calculate text position for centering
+        int textWidth = UIScale::calculateTextWidth(text, textSize);
+        int textHeight = UIScale::calculateTextHeight(textSize);
 
-    lcd.setCursor(textX, textY);
-    lcd.print(text);
+        int textX = posX + (width - textWidth) / 2;
+        int textY = posY + (height - textHeight) / 2;
+
+        // Ensure text doesn't go outside button bounds
+        textX = constrain(textX, posX + 2, posX + width - textWidth - 2);
+        textY = constrain(textY, posY + 2, posY + height - textHeight - 2);
+
+        lcd->setCursor(textX, textY);
+        lcd->print(text);
+    }
 }
 
-int Button::getTextX() const {
-    // Center text horizontally (approximate)
-    int textWidth = text.length() * FONT_SIZE * 6;  // Rough calculation
-    return x + (width - textWidth) / 2;
+void Button::update() {
+    // Button updates are handled via touch events
 }
 
-int Button::getTextY() const {
-    // Center text vertically (approximate)
-    int textHeight = FONT_SIZE * 8;  // Rough calculation
-    return y + (height - textHeight) / 2;
+void Button::handleTouch(int x, int y, bool touched) {
+    if (!enabled || !lcd) return;
+
+    bool wasPressed = pressed;
+    bool touchInside = (x >= posX && x < posX + width && y >= posY && y < posY + height);
+
+    if (touched && touchInside) {
+        if (!pressed) {
+            pressed = true;
+            Serial.printf("Button '%s' pressed\n", text.c_str());
+        }
+    } else {
+        if (pressed) {
+            pressed = false;
+
+            // Only trigger callback if touch was released inside button
+            if (touchInside && callback) {
+                Serial.printf("Button '%s' activated\n", text.c_str());
+                callback();
+            }
+        }
+    }
+
+    // Redraw if state changed
+    if (pressed != wasPressed) {
+        draw();
+    }
+}
+
+bool Button::isPressed() const {
+    return pressed;
+}
+
+bool Button::isEnabled() const {
+    return enabled;
+}
+
+void Button::setEnabled(bool enable) {
+    if (enabled != enable) {
+        enabled = enable;
+        pressed = false;  // Clear pressed state when disabled
+        draw();
+    }
+}
+
+void Button::setCallback(std::function<void()> cb) {
+    callback = cb;
+}
+
+void Button::setColors(uint16_t bg, uint16_t bgPress, uint16_t border, uint16_t txt) {
+    bgColor = bg;
+    bgColorPressed = bgPress;
+    borderColor = border;
+    textColor = txt;
+
+    // Set pressed text color to contrast with pressed background
+    textColorPressed = (bgPress == 0x0000) ? 0xFFFF : 0x0000;
+    borderColorPressed = (border == 0x8410) ? 0xFFFF : border;
 }
 
 }  // namespace Widgets

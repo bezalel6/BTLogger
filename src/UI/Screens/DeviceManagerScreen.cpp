@@ -100,9 +100,15 @@ void DeviceManagerScreen::cleanup() {
     delete scanButton;
     delete refreshButton;
 
+    for (auto button : deviceButtons) {
+        delete button;
+    }
+    deviceButtons.clear();
+
     backButton = nullptr;
     scanButton = nullptr;
     refreshButton = nullptr;
+    devices.clear();
 }
 
 void DeviceManagerScreen::setBluetoothManager(Core::BluetoothManager* btManager) {
@@ -125,8 +131,15 @@ void DeviceManagerScreen::refreshDeviceList() {
     devices.emplace_back("BTLogger_Test", "99:88:77:66:55:44", -32);
 
     // Update device connection status
+    auto connectedDevices = bluetoothManager->getConnectedDeviceNames();
     for (auto& device : devices) {
-        device.connected = bluetoothManager->isDeviceConnected(device.address);
+        device.connected = false;
+        for (const auto& connectedName : connectedDevices) {
+            if (device.name == connectedName) {
+                device.connected = true;
+                break;
+            }
+        }
     }
 
     updateDeviceList();
@@ -198,7 +211,7 @@ void DeviceManagerScreen::drawDeviceList() {
 
     if (devices.empty()) {
         lcd->setTextColor(0x8410);  // Gray
-        lcd->setTextSize(UIScale::scale(1));
+        lcd->setTextSize(UIScale::getGeneralTextSize());
         lcd->setCursor(UIScale::scale(10), infoAreaY + UIScale::scale(20));
         if (scanning) {
             lcd->print("Scanning for devices...");
@@ -223,14 +236,14 @@ void DeviceManagerScreen::drawDeviceList() {
 
         if (scrollOffset > 0) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, infoAreaY + UIScale::scale(5));
             lcd->print("^");
         }
 
         if (scrollOffset < (int)devices.size() - maxVisibleDevices) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, lcd->height() - FOOTER_HEIGHT - UIScale::scale(15));
             lcd->print("v");
         }
@@ -319,7 +332,7 @@ void DeviceManagerScreen::connectToDevice(const String& address) {
 void DeviceManagerScreen::disconnectFromDevice(const String& address) {
     if (bluetoothManager) {
         Serial.printf("Disconnecting from device: %s\n", address.c_str());
-        bluetoothManager->disconnectFromDevice(address);
+        bluetoothManager->disconnectDevice(address);
         ScreenManager::setStatusText("Disconnecting from device...");
     }
 }

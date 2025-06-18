@@ -223,7 +223,7 @@ void FileBrowserScreen::drawFileList() {
 
     if (files.empty()) {
         lcd->setTextColor(0x8410);  // Gray
-        lcd->setTextSize(UIScale::scale(1));
+        lcd->setTextSize(UIScale::getGeneralTextSize());
         lcd->setCursor(UIScale::scale(10), infoAreaY + UIScale::scale(20));
 
         if (!sdCardManager) {
@@ -251,14 +251,14 @@ void FileBrowserScreen::drawFileList() {
 
         if (scrollOffset > 0) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, infoAreaY + UIScale::scale(5));
             lcd->print("^");
         }
 
         if (scrollOffset < (int)files.size() - maxVisibleFiles) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, lcd->height() - FOOTER_HEIGHT - UIScale::scale(15));
             lcd->print("v");
         }

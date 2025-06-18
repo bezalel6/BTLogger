@@ -178,8 +178,10 @@ void BTLoggerApp::onLogReceived(const Core::LogPacket& packet, const String& dev
     Serial.printf("[%s] %s: %s\n", deviceName.c_str(), packet.tag, packet.message);
 
     // Send to LogViewer screen if it exists
-    auto logViewer = dynamic_cast<UI::Screens::LogViewerScreen*>(UI::ScreenManager::getScreen("LogViewer"));
-    if (logViewer) {
+    auto screen = UI::ScreenManager::getScreen("LogViewer");
+    if (screen) {
+        // We know this is a LogViewerScreen based on the name
+        auto logViewer = static_cast<UI::Screens::LogViewerScreen*>(screen);
         logViewer->addLogEntry(deviceName, packet.tag, packet.message, packet.level);
     }
 

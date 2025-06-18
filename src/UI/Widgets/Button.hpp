@@ -1,8 +1,13 @@
 #pragma once
 
 #include <Arduino.h>
-#include <LovyanGFX.hpp>
+#include <lgfx/v1/lgfx_fonts.hpp>
 #include <functional>
+
+// Forward declaration
+namespace lgfx {
+class LGFX_Device;
+}
 
 namespace BTLogger {
 namespace UI {
@@ -33,82 +38,56 @@ const uint16_t RED_LIGHT = 0xF810;
 }  // namespace Colors
 
 /**
- * Button widget with touch interaction and visual feedback
- * Designed for simple tap interactions with press/release states
+ * Button widget with automatic text width calculation and proper sizing
  */
 class Button {
    public:
-    // Button callback type
-    using ButtonCallback = std::function<void()>;
+    Button(lgfx::LGFX_Device& display, int x, int y, int w, int h, const String& label);
+    ~Button();
 
-    // Constructor
-    Button(lgfx::LGFX_Device& display, int x, int y, int width, int height, const String& text);
+    // Core functionality
+    void draw();
+    void update();
+    void handleTouch(int x, int y, bool touched);
 
-    // Configuration
-    void setText(const String& text) { this->text = text; }
-    void setCallback(ButtonCallback callback) { this->callback = callback; }
-    void setEnabled(bool enabled) { this->enabled = enabled; }
-    void setColors(uint16_t normal, uint16_t pressed, uint16_t disabled, uint16_t textColor);
+    // Properties
+    void setText(const String& newText);
+    void setEnabled(bool enable);
+    void setCallback(std::function<void()> cb);
+    void setColors(uint16_t bg, uint16_t bgPress, uint16_t border, uint16_t txt);
 
     // State
-    bool isEnabled() const { return enabled; }
-    bool isPressed() const { return pressed; }
-    bool isVisible() const { return visible; }
-    void setVisible(bool visible) { this->visible = visible; }
+    bool isPressed() const;
+    bool isEnabled() const;
 
-    // Geometry
-    void setPosition(int x, int y) {
-        this->x = x;
-        this->y = y;
-    }
-    void setSize(int width, int height) {
-        this->width = width;
-        this->height = height;
-    }
-    void getBounds(int& outX, int& outY, int& outWidth, int& outHeight) const;
-
-    // Interaction
-    void update();  // Call this in main loop
-    bool handleTouch(int touchX, int touchY, bool touched);
-
-    // Rendering
-    void draw();
-    void drawPressed();
-    void drawNormal();
+    // Getters for layout purposes
+    int getX() const { return posX; }
+    int getY() const { return posY; }
+    int getWidth() const { return width; }
+    int getHeight() const { return height; }
 
    private:
-    lgfx::LGFX_Device& lcd;
+    lgfx::LGFX_Device* lcd;
 
-    // Geometry
-    int x, y;
+    // Position and size
+    int posX, posY;
     int width, height;
 
     // Appearance
     String text;
-    uint16_t colorNormal;
-    uint16_t colorPressed;
-    uint16_t colorDisabled;
-    uint16_t colorText;
+    uint16_t bgColor, bgColorPressed;
+    uint16_t borderColor, borderColorPressed;
+    uint16_t textColor, textColorPressed;
 
     // State
-    bool enabled;
-    bool visible;
     bool pressed;
-    bool lastTouchState;
-    unsigned long pressTime;
+    bool enabled;
 
-    // Interaction
-    ButtonCallback callback;
+    // Callback
+    std::function<void()> callback;
 
-    // Constants
-    static const unsigned long PRESS_DURATION = 100;  // Visual feedback duration
-    static const int FONT_SIZE = 2;
-
-    // Internal methods
-    bool isPointInside(int px, int py) const;
-    void drawButton(uint16_t backgroundColor);
-    int getTextX() const;
-    int getTextY() const;
+    // Helper methods
+    void adjustWidthForText();
 };
 
 }  // namespace Widgets

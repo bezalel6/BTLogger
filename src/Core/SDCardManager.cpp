@@ -22,21 +22,17 @@ SDCardManager::~SDCardManager() {
 bool SDCardManager::initialize() {
     Serial.print("Initializing SD card...");
 
-    // Initialize SPI for SD card
-    SPI.begin();
+    SPIClass spi = SPIClass(VSPI);
 
-    if (!SD.begin(csPin)) {
-        Serial.println(" FAILED");
-        return false;
+    if (!SD.begin(SS, spi, 80000000)) {
+        Serial.println("Card Mount Failed");
+        return;
     }
-
-    Serial.println(" OK");
-
-    // Check card type
     uint8_t cardType = SD.cardType();
+
     if (cardType == CARD_NONE) {
         Serial.println("No SD card attached");
-        return false;
+        return;
     }
 
     Serial.print("SD Card Type: ");

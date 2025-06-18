@@ -55,10 +55,40 @@ class UIScale {
     static float getMinScale() { return SCALE_TINY; }
     static float getMaxScale() { return SCALE_HUGE; }
 
+    // Text sizing (independent of layout scale)
+    static void setLabelTextSize(int size);
+    static void setButtonTextSize(int size);
+    static void setGeneralTextSize(int size);
+
+    static int getLabelTextSize();
+    static int getButtonTextSize();
+    static int getGeneralTextSize();
+
+    // Text width calculation helpers
+    static int calculateTextWidth(const String& text, int textSize);
+    static int calculateTextHeight(int textSize);
+
+    // Save/load settings
+    static void saveSettings();
+    static void loadSettings();
+
    private:
     static bool initialized;
     static float currentScale;
     static Preferences preferences;
+    static int labelTextSize;
+    static int buttonTextSize;
+    static int generalTextSize;
+
+    // Default values
+    static const float DEFAULT_SCALE;
+    static const int DEFAULT_LABEL_TEXT_SIZE;
+    static const int DEFAULT_BUTTON_TEXT_SIZE;
+    static const int DEFAULT_GENERAL_TEXT_SIZE;
+
+    // Font width estimation (characters per pixel at size 1)
+    static const int CHAR_WIDTH_SIZE_1;
+    static const int CHAR_HEIGHT_SIZE_1;
 
     static void saveScale();
     static void loadScale();

@@ -168,7 +168,7 @@ void LogViewerScreen::drawLogs() {
 
     if (logEntries.empty()) {
         lcd->setTextColor(0x8410);  // Gray
-        lcd->setTextSize(UIScale::scale(1));
+        lcd->setTextSize(UIScale::getGeneralTextSize());
         lcd->setCursor(UIScale::scale(10), logAreaY + UIScale::scale(20));
         lcd->print("No log entries");
         lcd->setCursor(UIScale::scale(10), logAreaY + UIScale::scale(40));
@@ -191,44 +191,49 @@ void LogViewerScreen::drawLogs() {
         String levelStr = getLevelString(entry.level);
         uint16_t levelColor = getLevelColor(entry.level);
 
-        lcd->setTextSize(UIScale::scale(1));
+        int generalTextSize = UIScale::getGeneralTextSize();
+        lcd->setTextSize(generalTextSize);
         int xPos = UIScale::scale(2);
 
         // Draw level indicator
         lcd->setTextColor(levelColor);
         lcd->setCursor(xPos, yPos);
         lcd->print("[" + levelStr + "]");
-        xPos += UIScale::scale(35);
+        xPos += UIScale::calculateTextWidth("[WARN]", generalTextSize) + UIScale::scale(5);
 
         // Draw device name (abbreviated if too long)
         lcd->setTextColor(0x07FF);  // Cyan for device name
         lcd->setCursor(xPos, yPos);
         String deviceName = entry.deviceName;
-        if (deviceName.length() > 8) {
-            deviceName = deviceName.substring(0, 7) + "~";
+        int maxDeviceWidth = UIScale::scale(60);
+        while (UIScale::calculateTextWidth(deviceName + ":", generalTextSize) > maxDeviceWidth && deviceName.length() > 1) {
+            deviceName = deviceName.substring(0, deviceName.length() - 1);
         }
+        if (deviceName != entry.deviceName) deviceName += "~";
         lcd->print(deviceName + ":");
-        xPos += UIScale::scale(60);
+        xPos += UIScale::calculateTextWidth(deviceName + ":", generalTextSize) + UIScale::scale(5);
 
         // Draw tag (abbreviated if needed)
         lcd->setTextColor(0xFFE0);  // Yellow for tag
         lcd->setCursor(xPos, yPos);
         String tag = entry.tag;
-        if (tag.length() > 6) {
-            tag = tag.substring(0, 5) + "~";
+        int maxTagWidth = UIScale::scale(45);
+        while (UIScale::calculateTextWidth(tag + ":", generalTextSize) > maxTagWidth && tag.length() > 1) {
+            tag = tag.substring(0, tag.length() - 1);
         }
+        if (tag != entry.tag) tag += "~";
         lcd->print(tag + ":");
-        xPos += UIScale::scale(45);
+        xPos += UIScale::calculateTextWidth(tag + ":", generalTextSize) + UIScale::scale(5);
 
         // Draw message (truncated to fit)
         lcd->setTextColor(0xFFFF);  // White for message
         lcd->setCursor(xPos, yPos);
         String message = entry.message;
         int remainingWidth = lcd->width() - xPos - UIScale::scale(5);
-        int maxChars = remainingWidth / UIScale::scale(6);  // Approximate character width
-        if (message.length() > maxChars) {
-            message = message.substring(0, maxChars - 1) + "~";
+        while (UIScale::calculateTextWidth(message, generalTextSize) > remainingWidth && message.length() > 1) {
+            message = message.substring(0, message.length() - 1);
         }
+        if (message != entry.message) message += "~";
         lcd->print(message);
     }
 
@@ -238,14 +243,14 @@ void LogViewerScreen::drawLogs() {
 
         if (scrollOffset > 0) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, logAreaY + UIScale::scale(2));
             lcd->print("^");
         }
 
         if (scrollOffset < (int)logEntries.size() - maxVisibleLines) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, lcd->height() - FOOTER_HEIGHT - UIScale::scale(10));
             lcd->print("v");
         }
@@ -253,7 +258,7 @@ void LogViewerScreen::drawLogs() {
 
     // Draw log counter in corner
     lcd->setTextColor(0x8410);  // Gray
-    lcd->setTextSize(1);
+    lcd->setTextSize(UIScale::getGeneralTextSize());
     lcd->setCursor(UIScale::scale(2), lcd->height() - FOOTER_HEIGHT - UIScale::scale(12));
     lcd->print(String(logEntries.size()) + "/" + String(MAX_LOG_ENTRIES));
 }

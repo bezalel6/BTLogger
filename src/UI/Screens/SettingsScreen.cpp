@@ -107,9 +107,22 @@ void SettingsScreen::createSettings() {
         calibrateTouch();
     });
 
-    // UI Scale
+    // UI Scale (layout only)
     settings.emplace_back("UI Scale", getUIScaleText(), [this]() {
         adjustUIScale();
+    });
+
+    // Text Size Settings
+    settings.emplace_back("Label Text Size", getLabelTextSizeText(), [this]() {
+        adjustLabelTextSize();
+    });
+
+    settings.emplace_back("Button Text Size", getButtonTextSizeText(), [this]() {
+        adjustButtonTextSize();
+    });
+
+    settings.emplace_back("General Text Size", getGeneralTextSizeText(), [this]() {
+        adjustGeneralTextSize();
     });
 
     // Debug Mode
@@ -184,8 +197,8 @@ void SettingsScreen::drawSettings() {
     if (backButton) backButton->draw();
 
     // Draw title
-    lcd->setTextColor(0x07FF);  // Cyan
-    lcd->setTextSize(UIScale::scale(2));
+    lcd->setTextColor(0x07FF);                          // Cyan
+    lcd->setTextSize(UIScale::getLabelTextSize() + 1);  // Larger for title
     lcd->setCursor(UIScale::scale(100), UIScale::scale(22));
     lcd->print("SETTINGS");
 
@@ -195,7 +208,7 @@ void SettingsScreen::drawSettings() {
 
     if (settings.empty()) {
         lcd->setTextColor(0x8410);
-        lcd->setTextSize(UIScale::scale(1));
+        lcd->setTextSize(UIScale::getGeneralTextSize());
         lcd->setCursor(UIScale::scale(10), infoAreaY + UIScale::scale(20));
         lcd->print("No settings available");
         return;
@@ -214,14 +227,14 @@ void SettingsScreen::drawSettings() {
 
         if (scrollOffset > 0) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, infoAreaY + UIScale::scale(5));
             lcd->print("^");
         }
 
         if (scrollOffset < (int)settings.size() - maxVisibleSettings) {
             lcd->setTextColor(0xFFFF);
-            lcd->setTextSize(1);
+            lcd->setTextSize(UIScale::getGeneralTextSize());
             lcd->setCursor(indicatorX, lcd->height() - FOOTER_HEIGHT - UIScale::scale(15));
             lcd->print("v");
         }
@@ -295,6 +308,11 @@ void SettingsScreen::resetSettings() {
     // Reset UI scale
     UIScale::setScale(1.0f);
 
+    // Reset text sizes to defaults
+    UIScale::setLabelTextSize(1);
+    UIScale::setButtonTextSize(2);
+    UIScale::setGeneralTextSize(1);
+
     // Clear touch calibration
     TouchManager::resetCalibration();
 
@@ -313,6 +331,39 @@ String SettingsScreen::getDebugModeText() {
     // Placeholder - would check actual debug mode state
     static bool debugMode = false;
     return debugMode ? "Enabled" : "Disabled";
+}
+
+String SettingsScreen::getLabelTextSizeText() {
+    return "Size " + String(UIScale::getLabelTextSize());
+}
+
+String SettingsScreen::getButtonTextSizeText() {
+    return "Size " + String(UIScale::getButtonTextSize());
+}
+
+String SettingsScreen::getGeneralTextSizeText() {
+    return "Size " + String(UIScale::getGeneralTextSize());
+}
+
+void SettingsScreen::adjustLabelTextSize() {
+    int currentSize = UIScale::getLabelTextSize();
+    int newSize = (currentSize % 4) + 1;  // Cycle through 1, 2, 3, 4
+    UIScale::setLabelTextSize(newSize);
+    ScreenManager::setStatusText("Label text size: " + String(newSize));
+}
+
+void SettingsScreen::adjustButtonTextSize() {
+    int currentSize = UIScale::getButtonTextSize();
+    int newSize = (currentSize % 4) + 1;  // Cycle through 1, 2, 3, 4
+    UIScale::setButtonTextSize(newSize);
+    ScreenManager::setStatusText("Button text size: " + String(newSize));
+}
+
+void SettingsScreen::adjustGeneralTextSize() {
+    int currentSize = UIScale::getGeneralTextSize();
+    int newSize = (currentSize % 4) + 1;  // Cycle through 1, 2, 3, 4
+    UIScale::setGeneralTextSize(newSize);
+    ScreenManager::setStatusText("General text size: " + String(newSize));
 }
 
 }  // namespace Screens

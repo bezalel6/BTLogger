@@ -57,11 +57,17 @@ class SettingsScreen : public Screen {
     // Setting actions
     void calibrateTouch();
     void adjustUIScale();
+    void adjustLabelTextSize();
+    void adjustButtonTextSize();
+    void adjustGeneralTextSize();
     void toggleDebugMode();
     void resetSettings();
     void showAbout();
 
     String getUIScaleText();
+    String getLabelTextSizeText();
+    String getButtonTextSizeText();
+    String getGeneralTextSizeText();
     String getDebugModeText();
 };
 
