@@ -30,7 +30,7 @@ bool BTLoggerApp::initialize() {
 
     // Initialize hardware
     setupHardware();
-
+    lcd.init();
     // Initialize managers
     Serial.println("Initializing managers...");
 
