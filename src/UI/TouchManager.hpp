@@ -4,6 +4,11 @@
 #include <LovyanGFX.hpp>
 #include <Preferences.h>
 
+// Alternative software SPI touch implementation for CYD SPI conflict resolution
+#ifdef USE_BITBANG_TOUCH
+#include <XPT2046_Bitbang.h>
+#endif
+
 namespace BTLogger {
 namespace UI {
 
@@ -15,8 +20,9 @@ class TouchManager {
    public:
     // Touch point structure
     struct TouchPoint {
-        int x, y;
-        bool pressed;
+        int x = 0;
+        int y = 0;
+        bool pressed = false;
 
         TouchPoint() : x(0), y(0), pressed(false) {}
         TouchPoint(int _x, int _y, bool _pressed = true) : x(_x), y(_y), pressed(_pressed) {}
@@ -75,6 +81,16 @@ class TouchManager {
 
     // Touch coordinate retrieval
     static TouchPoint getTouchCoordinates();
+
+#ifdef USE_BITBANG_TOUCH
+    // Software SPI touch implementation for CYD SPI conflict resolution
+    static XPT2046_Bitbang* touchController;
+    static TouchPoint getBitbangTouchCoordinates();
+    static bool initializeBitbangTouch();
+
+    // Touch pin definitions are used from Hardware/ESP32_SPI_9341.h macros:
+    // TOUCH_IRQ, TOUCH_MOSI, TOUCH_MISO, TOUCH_SCK, TOUCH_CS
+#endif
 };
 
 }  // namespace UI

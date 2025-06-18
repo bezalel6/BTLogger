@@ -2,6 +2,10 @@
 #include "UIScale.hpp"
 #include <algorithm>
 
+#ifdef USE_BITBANG_TOUCH
+#include "../Hardware/ESP32_SPI_9341.h"
+#endif
+
 namespace BTLogger {
 namespace UI {
 
@@ -9,6 +13,10 @@ namespace UI {
 bool TouchManager::initialized = false;
 lgfx::LGFX_Device* TouchManager::lcd = nullptr;
 Preferences TouchManager::preferences;
+
+#ifdef USE_BITBANG_TOUCH
+XPT2046_Bitbang* TouchManager::touchController = nullptr;
+#endif
 
 TouchManager::TouchPoint TouchManager::currentTouch;
 TouchManager::TouchPoint TouchManager::lastTouch;
@@ -25,6 +33,15 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
 
     lcd = &display;
 
+#ifdef USE_BITBANG_TOUCH
+    // Use software SPI touch to avoid SPI conflict with SD card
+    if (!initializeBitbangTouch()) {
+        Serial.println("Failed to initialize software SPI touch");
+        return false;
+    }
+    Serial.println("TouchManager initialized with software SPI (bitbang) touch");
+#else
+    // Use LovyanGFX hardware SPI touch
     // Check if we have saved calibration data
     if (hasSavedCalibration()) {
         // Load and apply saved calibration
@@ -41,9 +58,10 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
         Serial.println("No saved touch calibration found, performing calibration");
         performTouchCalibration();
     }
+    Serial.println("TouchManager initialized with LovyanGFX hardware SPI touch");
+#endif
 
     initialized = true;
-    Serial.println("TouchManager initialized");
     return true;
 }
 
@@ -104,6 +122,9 @@ void TouchManager::resetCalibration() {
 }
 
 TouchManager::TouchPoint TouchManager::getTouchCoordinates() {
+#ifdef USE_BITBANG_TOUCH
+    return getBitbangTouchCoordinates();
+#else
     TouchPoint point;
 
     int pos[2] = {0, 0};
@@ -123,6 +144,7 @@ TouchManager::TouchPoint TouchManager::getTouchCoordinates() {
     }
 
     return point;
+#endif
 }
 
 bool TouchManager::hasSavedCalibration() {
@@ -259,8 +281,52 @@ void TouchManager::showTouchDebugInfo() {
                   lastTouch.x, lastTouch.y, lastTouch.pressed ? "true" : "false");
     Serial.printf("Tapped: %s\n", tapped ? "true" : "false");
     Serial.printf("Calibrating: %s\n", calibrating ? "true" : "false");
+#ifdef USE_BITBANG_TOUCH
+    Serial.printf("Using software SPI touch (bitbang)\n");
+#else
+    Serial.printf("Using LovyanGFX hardware SPI touch\n");
+#endif
     Serial.println("========================");
 }
+
+#ifdef USE_BITBANG_TOUCH
+bool TouchManager::initializeBitbangTouch() {
+    if (touchController) {
+        delete touchController;
+    }
+
+    touchController = new XPT2046_Bitbang(TOUCH_MOSI, TOUCH_MISO, TOUCH_SCK, TOUCH_CS);
+    touchController->begin();
+    // touchController->setRotation(1);  // Match display rotation
+
+    Serial.println("Software SPI touch controller initialized");
+    return true;
+}
+
+TouchManager::TouchPoint TouchManager::getBitbangTouchCoordinates() {
+    TouchPoint point;
+
+    if (!touchController) {
+        return point;
+    }
+
+    auto touch = touchController->getTouch();
+
+    if (touch.zRaw >= 500) {  // Minimum pressure threshold
+        // Map raw coordinates to screen coordinates
+        // These values may need calibration for your specific display
+        point.x = map(touch.xRaw, 200, 3700, 0, lcd->width() - 1);
+        point.y = map(touch.yRaw, 240, 3800, 0, lcd->height() - 1);
+        point.pressed = true;
+
+        // Clamp to screen boundaries
+        point.x = constrain(point.x, 0, lcd->width() - 1);
+        point.y = constrain(point.y, 0, lcd->height() - 1);
+    }
+
+    return point;
+}
+#endif
 
 }  // namespace UI
 }  // namespace BTLogger

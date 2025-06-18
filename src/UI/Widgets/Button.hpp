@@ -44,7 +44,7 @@ class Button {
     // Core functionality
     void draw();
     void update();
-    void handleTouch(int x, int y, bool touched);
+    bool handleTouch(int x, int y, bool touched);
 
     // Properties
     void setText(const String& newText);

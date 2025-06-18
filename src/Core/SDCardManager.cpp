@@ -22,9 +22,10 @@ SDCardManager::~SDCardManager() {
 bool SDCardManager::initialize() {
     Serial.print("Initializing SD card...");
 
+    // Use VSPI for SD card to avoid conflict - touch will use software SPI
     SPIClass spi = SPIClass(VSPI);
 
-    if (!SD.begin(SS, spi, 80000000)) {
+    if (!SD.begin(csPin, spi, 80000000)) {
         Serial.println("Card Mount Failed");
         return false;
     }

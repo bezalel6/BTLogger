@@ -70,8 +70,8 @@ void Button::update() {
     // Button updates are handled via touch events
 }
 
-void Button::handleTouch(int x, int y, bool touched) {
-    if (!enabled || !lcd) return;
+bool Button::handleTouch(int x, int y, bool touched) {
+    if (!enabled || !lcd) return false;
 
     bool wasPressed = pressed;
     bool touchInside = (x >= posX && x < posX + width && y >= posY && y < posY + height);
@@ -97,6 +97,9 @@ void Button::handleTouch(int x, int y, bool touched) {
     if (pressed != wasPressed) {
         draw();
     }
+
+    // Return true if touch was inside this button's area
+    return touchInside;
 }
 
 bool Button::isPressed() const {
