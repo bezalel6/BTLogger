@@ -15,13 +15,8 @@ TouchManager::TouchPoint TouchManager::lastTouch;
 bool TouchManager::tapped = false;
 unsigned long TouchManager::lastTouchTime = 0;
 unsigned long TouchManager::debounceTime = 50;
-int TouchManager::touchThreshold = 10;
 
 bool TouchManager::calibrating = false;
-int TouchManager::calibrationStep = 0;
-TouchManager::CalibrationData TouchManager::calibrationData;
-TouchManager::TouchPoint TouchManager::calibrationPoints[4];
-TouchManager::TouchPoint TouchManager::rawCalibrationPoints[4];
 
 bool TouchManager::initialize(lgfx::LGFX_Device& display) {
     if (initialized) {
