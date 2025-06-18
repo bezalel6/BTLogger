@@ -8,6 +8,9 @@
 #include <functional>
 #include <vector>
 
+namespace BTLogger {
+namespace Core {
+
 // Log packet structure for communication
 struct LogPacket {
     uint32_t timestamp;
@@ -96,3 +99,6 @@ class BluetoothManager {
     static void scanCompleteCallback(BLEScanResults results);
     static void notifyCallback(BLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify);
 };
+
+}  // namespace Core
+}  // namespace BTLogger

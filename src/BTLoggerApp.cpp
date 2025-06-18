@@ -1,14 +1,19 @@
 #include "BTLoggerApp.hpp"
-#include "InputSystem.hpp"
+#include "UI/UIScale.hpp"
+#include "UI/TouchManager.hpp"
+#include "UI/ToastManager.hpp"
+#include "UI/MenuManager.hpp"
+#include "UI/CriticalErrorHandler.hpp"
+
+namespace BTLogger {
 
 BTLoggerApp::BTLoggerApp()
-    : bluetoothManager(nullptr), sdCardManager(nullptr), displayManager(nullptr), running(false), initialized(false), lastUpdate(0) {
+    : bluetoothManager(nullptr), sdCardManager(nullptr), running(false), initialized(false), lastUpdate(0) {
 }
 
 BTLoggerApp::~BTLoggerApp() {
     stop();
 
-    delete displayManager;
     delete sdCardManager;
     delete bluetoothManager;
 }
@@ -30,27 +35,20 @@ bool BTLoggerApp::initialize() {
     Serial.println("Initializing managers...");
 
     // SD Card Manager
-    sdCardManager = new SDCardManager();
+    sdCardManager = new Core::SDCardManager();
     if (!sdCardManager->initialize()) {
         Serial.println("WARNING: SD Card initialization failed - logging disabled");
     }
 
     // Bluetooth Manager
-    bluetoothManager = new BluetoothManager();
+    bluetoothManager = new Core::BluetoothManager();
     if (!bluetoothManager->initialize()) {
         Serial.println("ERROR: Bluetooth initialization failed");
         return false;
     }
 
-    // Display Manager
-    displayManager = new DisplayManager(lcd);
-    if (!displayManager->initialize()) {
-        Serial.println("ERROR: Display initialization failed");
-        return false;
-    }
-
     // Set up callbacks
-    bluetoothManager->setLogCallback([this](const LogPacket& packet, const String& deviceName) {
+    bluetoothManager->setLogCallback([this](const Core::LogPacket& packet, const String& deviceName) {
         onLogReceived(packet, deviceName);
     });
 
@@ -58,24 +56,23 @@ bool BTLoggerApp::initialize() {
         onDeviceConnection(deviceName, connected);
     });
 
-    // Note: DisplayManager doesn't need callbacks since it's simpler
-    // Device connection and file operations are handled directly
+    // Initialize UI systems
+    UI::UIScale::initialize();
+    if (!UI::TouchManager::initialize(lcd)) {
+        Serial.println("ERROR: Touch initialization failed");
+        return false;
+    }
+    UI::ToastManager::initialize(lcd);
+    UI::CriticalErrorHandler::initialize(lcd);
 
-    // Initialize input system
-    INPUT_SETUP();
-
-    // Update display with initial status
-    if (sdCardManager && displayManager) {
-        displayManager->updateSDCardStatus(
-            sdCardManager->isCardPresent(),
-            sdCardManager->getFreeSpace(),
-            sdCardManager->getTotalSpace());
+    // Wait for touch calibration to complete if needed
+    while (UI::TouchManager::needsCalibration()) {
+        UI::TouchManager::update();
+        delay(50);
     }
 
-    // Show startup screen
-    if (displayManager) {
-        displayManager->showStartupScreen();
-    }
+    // Initialize menu system
+    UI::MenuManager::initialize(lcd);
 
     initialized = true;
     Serial.println("BTLogger initialized successfully!");
@@ -97,11 +94,8 @@ void BTLoggerApp::start() {
     // Start scanning for devices
     bluetoothManager->startScanning();
 
-    // Show main screen and welcome message
-    if (displayManager) {
-        displayManager->showMainScreen();
-        displayManager->showMessage("BTLogger Ready", "Scanning for devices...", false);
-    }
+    // Show welcome toast
+    UI::ToastManager::showSuccess("BTLogger Ready - Scanning for devices...");
 }
 
 void BTLoggerApp::stop() {
@@ -136,15 +130,13 @@ void BTLoggerApp::update() {
             bluetoothManager->update();
         }
 
-        if (displayManager) {
-            displayManager->update();
-        }
+        // Update UI systems
+        UI::TouchManager::update();
+        UI::ToastManager::update();
+        UI::MenuManager::update();
 
         lastUpdate = currentTime;
     }
-
-    // Update input system
-    INPUT_LOOP();
 
     // Update LEDs
     updateLEDs();
@@ -155,12 +147,7 @@ void BTLoggerApp::handleInput() {
     // Hardware buttons/encoder events are handled in the input callbacks
 }
 
-void BTLoggerApp::onLogReceived(const LogPacket& packet, const String& deviceName) {
-    // Display log on screen
-    if (displayManager) {
-        displayManager->addLogEntry(packet, deviceName);
-    }
-
+void BTLoggerApp::onLogReceived(const Core::LogPacket& packet, const String& deviceName) {
     // Save to SD card
     if (sdCardManager) {
         sdCardManager->saveLogToSession(packet, deviceName);
@@ -168,13 +155,20 @@ void BTLoggerApp::onLogReceived(const LogPacket& packet, const String& deviceNam
 
     // Print to serial for debugging
     Serial.printf("[%s] %s: %s\n", deviceName.c_str(), packet.tag, packet.message);
+
+    // Show toast notification for important logs
+    if (packet.level >= 2) {  // WARN and ERROR levels
+        String levelStr = (packet.level == 2) ? "WARN" : "ERROR";
+        String toastMsg = deviceName + " " + levelStr + ": " + String(packet.message);
+        if (packet.level == 3) {
+            UI::ToastManager::showError(toastMsg);
+        } else {
+            UI::ToastManager::showWarning(toastMsg);
+        }
+    }
 }
 
 void BTLoggerApp::onDeviceConnection(const String& deviceName, bool connected) {
-    if (displayManager) {
-        displayManager->updateConnectionStatus(deviceName, connected);
-    }
-
     if (connected) {
         Serial.printf("Device connected: %s\n", deviceName.c_str());
 
@@ -183,10 +177,8 @@ void BTLoggerApp::onDeviceConnection(const String& deviceName, bool connected) {
             sdCardManager->startNewSession(deviceName);
         }
 
-        // Show connection message
-        if (displayManager) {
-            displayManager->showMessage("Device Connected", deviceName, false);
-        }
+        // Show connection toast
+        UI::ToastManager::showSuccess("Connected to " + deviceName);
     } else {
         Serial.printf("Device disconnected: %s\n", deviceName.c_str());
 
@@ -194,6 +186,9 @@ void BTLoggerApp::onDeviceConnection(const String& deviceName, bool connected) {
         if (sdCardManager) {
             sdCardManager->endCurrentSession();
         }
+
+        // Show disconnection toast
+        UI::ToastManager::showWarning("Disconnected from " + deviceName);
     }
 }
 
@@ -212,33 +207,18 @@ void BTLoggerApp::onFileOperation(const String& operation, const String& path) {
     if (operation == "load") {
         // Load log file
         std::vector<String> lines = sdCardManager->loadLogFile(path);
-        if (displayManager) {
-            // Clear current display and show loaded logs
-            displayManager->clearScreen();
-            displayManager->showMainScreen();
-
-            for (const String& line : lines) {
-                // Parse log line and add to display
-                // For now, just add as raw text
-                LogPacket packet;
-                packet.timestamp = millis();
-                packet.level = 1;
-                strlcpy(packet.message, line.c_str(), sizeof(packet.message));
-                strlcpy(packet.tag, "FILE", sizeof(packet.tag));
-
-                displayManager->addLogEntry(packet, "Loaded");
-            }
+        if (!lines.empty()) {
+            UI::ToastManager::showSuccess("Loaded " + String(lines.size()) + " log entries");
+            // File content would be displayed in the log viewer screen
+        } else {
+            UI::ToastManager::showError("Failed to load file: " + path);
         }
     } else if (operation == "delete") {
         // Delete file
         if (sdCardManager->deleteFile(path)) {
-            if (displayManager) {
-                displayManager->showMessage("File Deleted", path, false);
-            }
+            UI::ToastManager::showSuccess("File deleted: " + path);
         } else {
-            if (displayManager) {
-                displayManager->showMessage("Delete Failed", path, true);
-            }
+            UI::ToastManager::showError("Failed to delete: " + path);
         }
     }
 }
@@ -284,3 +264,5 @@ void BTLoggerApp::updateLEDs() {
         lastLedUpdate = currentTime;
     }
 }
+
+}  // namespace BTLogger

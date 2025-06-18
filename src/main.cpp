@@ -5,27 +5,25 @@
 #include "BTLoggerApp.hpp"
 
 // Global application instance
-BTLoggerApp* app = nullptr;
+BTLogger::BTLoggerApp app;
 
-void setup(void) {
-    // Create and initialize the BTLogger application
-    app = new BTLoggerApp();
-
-    if (app->initialize()) {
-        app->start();
-        Serial.println("BTLogger application started successfully!");
-    } else {
-        Serial.println("FATAL: Failed to initialize BTLogger application");
-        while (1) {
-            delay(1000);
-        }
+void setup() {
+    // Initialize the application
+    if (!app.initialize()) {
+        Serial.println("Failed to initialize BTLogger!");
+        return;
     }
+
+    // Start the application
+    app.start();
 }
 
-void loop(void) {
-    if (app) {
-        app->update();
-    }
+void loop() {
+    // Update the application
+    app.update();
+
+    // Handle any input
+    app.handleInput();
 
     // Small delay to prevent watchdog issues
     delay(1);

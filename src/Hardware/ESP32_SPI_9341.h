@@ -6,6 +6,9 @@
 
 #include <LovyanGFX.hpp>
 
+namespace BTLogger {
+namespace Hardware {
+
 #define LCD_MOSI 13
 #define LCD_MISO 12
 #define LCD_SCK 14
@@ -114,5 +117,8 @@ class LGFX : public lgfx::LGFX_Device {
         setPanel(&_panel_instance);  // 使用するパネルをセットします。
     }
 };
+
+}  // namespace Hardware
+}  // namespace BTLogger
 
 #endif /* F455A1B7_80E2_4672_959C_840DEE6F1F26 */
