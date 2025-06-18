@@ -114,8 +114,8 @@ void BluetoothManager::scanCompleteCallback(BLEScanResults results) {
 }
 
 void BluetoothManager::onDeviceFound(BLEAdvertisedDevice advertisedDevice) {
-    String deviceName = advertisedDevice.getName().c_str();
-    String deviceAddress = advertisedDevice.getAddress().toString().c_str();
+    String deviceName = String(advertisedDevice.getName().c_str());
+    String deviceAddress = String(advertisedDevice.getAddress().toString().c_str());
 
     // Filter devices - look for BTLogger compatible devices
     bool isTargetDevice = false;
@@ -138,7 +138,7 @@ void BluetoothManager::onDeviceFound(BLEAdvertisedDevice advertisedDevice) {
         bool alreadyExists = false;
         for (auto& device : availableDevices) {
             String existingAddress = String(device.getAddress().toString().c_str());
-            if (existingAddress == deviceAddress) {
+            if (existingAddress.equals(deviceAddress)) {
                 alreadyExists = true;
                 break;
             }
@@ -171,7 +171,7 @@ bool BluetoothManager::connectToDevice(const String& address) {
     BLEAdvertisedDevice* targetDevice = nullptr;
     for (auto& device : availableDevices) {
         String deviceAddress = String(device.getAddress().toString().c_str());
-        if (deviceAddress == address) {
+        if (deviceAddress.equals(address)) {
             targetDevice = &device;
             break;
         }
@@ -225,7 +225,7 @@ bool BluetoothManager::connectToDevice(const String& address) {
 
     // Add to connected devices
     ConnectedDevice newDevice;
-    newDevice.name = targetDevice->getName().c_str();
+    newDevice.name = String(targetDevice->getName().c_str());
     newDevice.address = address;
     newDevice.client = client;
     newDevice.connected = true;
