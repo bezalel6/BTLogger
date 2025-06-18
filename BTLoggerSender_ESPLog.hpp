@@ -47,11 +47,25 @@ enum BTLogLevel {
 
 class BTLoggerSender {
    public:
+    // Set BTLogger-specific log level (independent of global ESP_LOG_LEVEL)
+    static void setBTLogLevel(BTLogLevel level) {
+        _btLogLevel = level;
+        ESP_LOGI("BTLOGGER", "BTLogger log level set to: %s", levelToString(level).c_str());
+    }
+
+    // Get current BTLogger log level
+    static BTLogLevel getBTLogLevel() {
+        return _btLogLevel;
+    }
+
     // Initialize with ESP_LOG integration
-    static bool begin(const String& deviceName = "ESP32_Dev", bool hookESPLog = true) {
+    static bool begin(const String& deviceName = "ESP32_Dev", bool hookESPLog = true, BTLogLevel btLogLevel = BT_INFO) {
         if (_initialized) return true;
 
         Serial.println("Initializing BTLogger Sender with ESP_LOG integration...");
+
+        // Set BTLogger log level
+        _btLogLevel = btLogLevel;
 
         // Store original vprintf function
         if (hookESPLog && !_originalVprintf) {
@@ -85,7 +99,8 @@ class BTLoggerSender {
         Serial.println("BTLogger Sender initialized with ESP_LOG hook - Device: " + deviceName);
 
         // Test the integration
-        ESP_LOGI("BTLOGGER", "ESP_LOG integration active - all logs will be sent to BTLogger");
+        ESP_LOGI("BTLOGGER", "ESP_LOG integration active - BTLogger level: %s", levelToString(_btLogLevel).c_str());
+        ESP_LOGI("BTLOGGER", "Note: BTLogger log level is independent of ESP_LOG_LEVEL");
 
         return true;
     }
@@ -124,6 +139,22 @@ class BTLoggerSender {
     static uint32_t getLogCount() { return _logCount; }
     static uint32_t getESPLogCount() { return _espLogCount; }
 
+    // Convenience methods for common BTLogger log level scenarios
+    static void setDebugMode() { setBTLogLevel(BT_DEBUG); }      // Send everything including debug
+    static void setInfoMode() { setBTLogLevel(BT_INFO); }        // Send INFO, WARN, ERROR (recommended)
+    static void setWarningMode() { setBTLogLevel(BT_WARN); }     // Send only WARN, ERROR
+    static void setErrorOnlyMode() { setBTLogLevel(BT_ERROR); }  // Send only ERROR messages
+
+    // Get human-readable status
+    static String getStatus() {
+        String status = "BTLogger Status:\n";
+        status += "- Connected: " + String(isConnected() ? "Yes" : "No") + "\n";
+        status += "- Log Level: " + levelToString(_btLogLevel) + "\n";
+        status += "- ESP_LOG messages sent: " + String(_espLogCount) + "\n";
+        status += "- Manual logs sent: " + String(_logCount);
+        return status;
+    }
+
    private:
     static bool _initialized;
     static BLEServer* _server;
@@ -131,6 +162,7 @@ class BTLoggerSender {
     static vprintf_like_t _originalVprintf;
     static uint32_t _logCount;
     static uint32_t _espLogCount;
+    static BTLogLevel _btLogLevel;
 
     // Custom vprintf function that hooks ESP_LOG output
     static int customVprintf(const char* format, va_list args) {
@@ -198,8 +230,8 @@ class BTLoggerSender {
         // Remove any trailing whitespace/newlines
         message.trim();
 
-        // Send to BTLogger
-        if (!message.isEmpty()) {
+        // Apply BTLogger-specific filtering (independent of ESP_LOG_LEVEL)
+        if (!message.isEmpty() && level >= _btLogLevel) {
             String logEntry = "[" + String(millis()) + "] [" + levelToString(level) + "] [" + tag + "] " + message;
             _logCharacteristic->setValue(logEntry.c_str());
             _logCharacteristic->notify();
@@ -244,6 +276,7 @@ BLECharacteristic* BTLoggerSender::_logCharacteristic = nullptr;
 vprintf_like_t BTLoggerSender::_originalVprintf = nullptr;
 uint32_t BTLoggerSender::_logCount = 0;
 uint32_t BTLoggerSender::_espLogCount = 0;
+BTLogLevel BTLoggerSender::_btLogLevel = BT_INFO;
 
 // Convenience macros (still available for manual use)
 #define BT_LOG_DEBUG(tag, msg) BTLoggerSender::debug(tag, msg)

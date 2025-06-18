@@ -1,4 +1,5 @@
 #include "SDCardManager.hpp"
+#include <SPI.h>
 
 // Constants
 const String SDCardManager::LOG_DIR = "/logs";
@@ -14,19 +15,38 @@ const String SDCardManager::CONFIG_DIR = "/logs/config";
 SDCardManager::SDCardManager()
     : cardPresent(false), autoSaveEnabled(true), maxSessionSizeBytes(10 * 1024 * 1024)  // 10MB default
       ,
-      currentSessionSize(0) {
+      currentSessionSize(0),
+      spi(nullptr),
+      cachedTotalSpace(0),
+      cachedUsedSpace(0) {
 }
 
 SDCardManager::~SDCardManager() {
     endCurrentSession();
+    if (spi) {
+        delete spi;
+        spi = nullptr;
+    }
 }
 
 bool SDCardManager::initialize() {
     Serial.println("Initializing SD Card Manager...");
 
-    // Initialize SD card
-    if (!SD.begin()) {
+    // Create SPI instance if not already created
+    if (!spi) {
+        spi = new SPIClass(VSPI);
+    }
+
+    // Initialize SD card using VSPI
+    if (!SD.begin(SS, *spi, 80000000)) {
         Serial.println("SD Card initialization failed");
+        cardPresent = false;
+        return false;
+    }
+
+    uint8_t cardType = SD.cardType();
+    if (cardType == CARD_NONE) {
+        Serial.println("No SD card attached");
         cardPresent = false;
         return false;
     }
@@ -34,16 +54,31 @@ bool SDCardManager::initialize() {
     cardPresent = true;
     Serial.println("SD Card initialized successfully");
 
+    // Print card type
+    Serial.print("SD Card Type: ");
+    if (cardType == CARD_MMC) {
+        Serial.println("MMC");
+    } else if (cardType == CARD_SD) {
+        Serial.println("SDSC");
+    } else if (cardType == CARD_SDHC) {
+        Serial.println("SDHC");
+    } else {
+        Serial.println("UNKNOWN");
+    }
+
     // Create directory structure
     ensureDirectoryExists(LOG_DIR);
     ensureDirectoryExists(SESSION_DIR);
     ensureDirectoryExists(CONFIG_DIR);
 
+    // Cache card info to avoid SPI conflicts later
+    cachedTotalSpace = SD.cardSize();
+    cachedUsedSpace = 0;  // We'll calculate this if needed
+
     // Print card info
-    Serial.printf("SD Card Type: %d\n", SD.cardType());
-    Serial.printf("SD Card Size: %llu MB\n", SD.cardSize() / (1024 * 1024));
-    Serial.printf("Total Space: %llu MB\n", SD.totalBytes() / (1024 * 1024));
-    Serial.printf("Used Space: %llu MB\n", SD.usedBytes() / (1024 * 1024));
+    Serial.printf("SD Card Size: %llu MB\n", cachedTotalSpace / (1024 * 1024));
+    Serial.printf("Total Space: %llu MB\n", cachedTotalSpace / (1024 * 1024));
+    Serial.printf("Used Space: %llu MB\n", cachedUsedSpace / (1024 * 1024));
 
     return true;
 }
@@ -291,14 +326,14 @@ size_t SDCardManager::getFreeSpace() {
     if (!cardPresent) {
         return 0;
     }
-    return SD.totalBytes() - SD.usedBytes();
+    return cachedTotalSpace - cachedUsedSpace;
 }
 
 size_t SDCardManager::getTotalSpace() {
     if (!cardPresent) {
         return 0;
     }
-    return SD.totalBytes();
+    return cachedTotalSpace;
 }
 
 bool SDCardManager::formatCard() {

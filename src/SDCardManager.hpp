@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <SD.h>
 #include <FS.h>
+#include <SPI.h>
 #include <vector>
 #include "BluetoothManager.hpp"
 
@@ -75,6 +76,11 @@ class SDCardManager {
     File currentLogFile;
     size_t maxSessionSizeBytes;
     size_t currentSessionSize;
+    SPIClass* spi;
+
+    // Cached card info to avoid SPI conflicts
+    size_t cachedTotalSpace;
+    size_t cachedUsedSpace;
 
     // Constants
     static const String LOG_DIR;
