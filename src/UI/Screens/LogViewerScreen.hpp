@@ -24,7 +24,7 @@ class LogViewerScreen : public Screen {
     void handleTouch(int x, int y, bool touched) override;
     void cleanup() override;
 
-    // Log management
+    // Log integration
     void addLogEntry(const String& deviceName, const String& tag, const String& message, int level);
     void clearLogs();
 

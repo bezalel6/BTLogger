@@ -110,18 +110,22 @@ void LogViewerScreen::cleanup() {
 }
 
 void LogViewerScreen::addLogEntry(const String& deviceName, const String& tag, const String& message, int level) {
-    if (paused) return;
-
+    // Add new log entry
     logEntries.emplace_back(deviceName, tag, message, level);
 
-    // Limit number of entries to prevent memory issues
+    // Limit log entries to prevent memory issues
     if (logEntries.size() > MAX_LOG_ENTRIES) {
         logEntries.erase(logEntries.begin());
+        // Adjust scroll offset if needed
+        if (scrollOffset > 0) {
+            scrollOffset--;
+        }
     }
 
-    // Auto-scroll to bottom
-    int maxScroll = std::max(0, (int)logEntries.size() - maxVisibleLines);
-    scrollOffset = maxScroll;
+    // Auto-scroll to bottom if not paused and not manually scrolled
+    if (!paused && scrollOffset >= (int)logEntries.size() - maxVisibleLines) {
+        scrollOffset = std::max(0, (int)logEntries.size() - maxVisibleLines);
+    }
 
     markForRedraw();
 }
@@ -130,7 +134,6 @@ void LogViewerScreen::clearLogs() {
     logEntries.clear();
     scrollOffset = 0;
     markForRedraw();
-    ScreenManager::setStatusText("Logs cleared");
 }
 
 void LogViewerScreen::drawHeader() {
@@ -157,64 +160,102 @@ void LogViewerScreen::drawHeader() {
 void LogViewerScreen::drawLogs() {
     if (!lcd) return;
 
-    // Clear log area
     int logAreaY = HEADER_HEIGHT;
     int logAreaHeight = lcd->height() - HEADER_HEIGHT - FOOTER_HEIGHT;
+
+    // Clear log area
     lcd->fillRect(0, logAreaY, lcd->width(), logAreaHeight, 0x0000);
 
     if (logEntries.empty()) {
         lcd->setTextColor(0x8410);  // Gray
         lcd->setTextSize(UIScale::scale(1));
         lcd->setCursor(UIScale::scale(10), logAreaY + UIScale::scale(20));
-        lcd->print("No logs available");
+        lcd->print("No log entries");
+        lcd->setCursor(UIScale::scale(10), logAreaY + UIScale::scale(40));
+        lcd->print("Waiting for devices...");
         return;
     }
 
-    // Draw visible log entries
-    int y = logAreaY + UIScale::scale(5);
-    int lineHeight = UIScale::scale(LINE_HEIGHT);
-    int startIndex = scrollOffset;
-    int endIndex = std::min(startIndex + maxVisibleLines, (int)logEntries.size());
+    // Calculate visible entries
+    maxVisibleLines = logAreaHeight / UIScale::scale(LINE_HEIGHT);
 
+    int startIndex = scrollOffset;
+    int endIndex = std::min((int)logEntries.size(), startIndex + maxVisibleLines);
+
+    // Draw log entries
     for (int i = startIndex; i < endIndex; i++) {
         const LogEntry& entry = logEntries[i];
+        int yPos = logAreaY + ((i - startIndex) * UIScale::scale(LINE_HEIGHT));
 
-        // Set color based on log level
-        lcd->setTextColor(getLevelColor(entry.level));
+        // Format: [LEVEL] Device: Tag: Message
+        String levelStr = getLevelString(entry.level);
+        uint16_t levelColor = getLevelColor(entry.level);
+
         lcd->setTextSize(UIScale::scale(1));
+        int xPos = UIScale::scale(2);
 
-        // Format: [LEVEL] Device: Message
-        String line = "[" + getLevelString(entry.level) + "] " +
-                      entry.deviceName + ": " + entry.message;
+        // Draw level indicator
+        lcd->setTextColor(levelColor);
+        lcd->setCursor(xPos, yPos);
+        lcd->print("[" + levelStr + "]");
+        xPos += UIScale::scale(35);
 
-        // Truncate if too long
-        if (line.length() > 35) {
-            line = line.substring(0, 32) + "...";
+        // Draw device name (abbreviated if too long)
+        lcd->setTextColor(0x07FF);  // Cyan for device name
+        lcd->setCursor(xPos, yPos);
+        String deviceName = entry.deviceName;
+        if (deviceName.length() > 8) {
+            deviceName = deviceName.substring(0, 7) + "~";
         }
+        lcd->print(deviceName + ":");
+        xPos += UIScale::scale(60);
 
-        lcd->setCursor(UIScale::scale(5), y);
-        lcd->print(line);
+        // Draw tag (abbreviated if needed)
+        lcd->setTextColor(0xFFE0);  // Yellow for tag
+        lcd->setCursor(xPos, yPos);
+        String tag = entry.tag;
+        if (tag.length() > 6) {
+            tag = tag.substring(0, 5) + "~";
+        }
+        lcd->print(tag + ":");
+        xPos += UIScale::scale(45);
 
-        y += lineHeight;
-        if (y >= lcd->height() - FOOTER_HEIGHT) break;
+        // Draw message (truncated to fit)
+        lcd->setTextColor(0xFFFF);  // White for message
+        lcd->setCursor(xPos, yPos);
+        String message = entry.message;
+        int remainingWidth = lcd->width() - xPos - UIScale::scale(5);
+        int maxChars = remainingWidth / UIScale::scale(6);  // Approximate character width
+        if (message.length() > maxChars) {
+            message = message.substring(0, maxChars - 1) + "~";
+        }
+        lcd->print(message);
     }
 
     // Draw scroll indicators
     if (logEntries.size() > maxVisibleLines) {
-        int indicatorX = lcd->width() - UIScale::scale(10);
+        int indicatorX = lcd->width() - UIScale::scale(8);
 
         if (scrollOffset > 0) {
             lcd->setTextColor(0xFFFF);
-            lcd->setCursor(indicatorX, logAreaY + UIScale::scale(5));
+            lcd->setTextSize(1);
+            lcd->setCursor(indicatorX, logAreaY + UIScale::scale(2));
             lcd->print("^");
         }
 
         if (scrollOffset < (int)logEntries.size() - maxVisibleLines) {
             lcd->setTextColor(0xFFFF);
-            lcd->setCursor(indicatorX, lcd->height() - FOOTER_HEIGHT - UIScale::scale(15));
+            lcd->setTextSize(1);
+            lcd->setCursor(indicatorX, lcd->height() - FOOTER_HEIGHT - UIScale::scale(10));
             lcd->print("v");
         }
     }
+
+    // Draw log counter in corner
+    lcd->setTextColor(0x8410);  // Gray
+    lcd->setTextSize(1);
+    lcd->setCursor(UIScale::scale(2), lcd->height() - FOOTER_HEIGHT - UIScale::scale(12));
+    lcd->print(String(logEntries.size()) + "/" + String(MAX_LOG_ENTRIES));
 }
 
 void LogViewerScreen::handleScrolling(int x, int y, bool wasTapped) {

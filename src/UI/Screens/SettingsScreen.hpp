@@ -2,11 +2,15 @@
 
 #include "../Screen.hpp"
 #include "../Widgets/Button.hpp"
+#include <vector>
 
 namespace BTLogger {
 namespace UI {
 namespace Screens {
 
+/**
+ * Settings screen for system configuration
+ */
 class SettingsScreen : public Screen {
    public:
     SettingsScreen();
@@ -19,9 +23,46 @@ class SettingsScreen : public Screen {
     void cleanup() override;
 
    private:
+    struct SettingItem {
+        String name;
+        String value;
+        std::function<void()> callback;
+
+        SettingItem(const String& n, const String& v, std::function<void()> cb)
+            : name(n), value(v), callback(cb) {}
+    };
+
+    // UI Elements
     Widgets::Button* backButton;
+
+    // Setting buttons (dynamically created)
+    std::vector<Widgets::Button*> settingButtons;
+    std::vector<SettingItem> settings;
+
+    int scrollOffset;
+    int maxVisibleSettings;
     bool lastTouchState;
-    void drawContent();
+
+    // Constants
+    static const int SETTING_BUTTON_HEIGHT = 35;
+
+    void createControlButtons();
+    void createSettings();
+    void updateSettingsList();
+    void drawSettings();
+    void handleScrolling(int x, int y, bool wasTapped);
+    void scrollUp();
+    void scrollDown();
+
+    // Setting actions
+    void calibrateTouch();
+    void adjustUIScale();
+    void toggleDebugMode();
+    void resetSettings();
+    void showAbout();
+
+    String getUIScaleText();
+    String getDebugModeText();
 };
 
 }  // namespace Screens

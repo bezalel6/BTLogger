@@ -135,6 +135,14 @@ String ScreenManager::getCurrentScreenName() {
     return "";
 }
 
+Screen* ScreenManager::getScreen(const String& screenName) {
+    auto it = screens.find(screenName);
+    if (it != screens.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
 void ScreenManager::drawStatusFooter() {
     if (!lcd) {
         return;

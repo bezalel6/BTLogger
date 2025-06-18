@@ -22,6 +22,7 @@ class ScreenManager {
     static void navigateTo(const String& screenName);
     static void goBack();
     static void setStatusText(const String& status);
+    static Screen* getScreen(const String& screenName);
 
     // Main loop
     static void update();

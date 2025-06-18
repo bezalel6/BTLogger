@@ -73,8 +73,17 @@ bool BTLoggerApp::initialize() {
     UI::ScreenManager::registerScreen(new UI::Screens::MainMenuScreen());
     UI::ScreenManager::registerScreen(new UI::Screens::LogViewerScreen());
     UI::ScreenManager::registerScreen(new UI::Screens::SystemInfoScreen());
-    UI::ScreenManager::registerScreen(new UI::Screens::DeviceManagerScreen());
-    UI::ScreenManager::registerScreen(new UI::Screens::FileBrowserScreen());
+
+    // Create and connect DeviceManager to BluetoothManager
+    auto deviceManager = new UI::Screens::DeviceManagerScreen();
+    deviceManager->setBluetoothManager(coreTaskManager->getBluetoothManager());
+    UI::ScreenManager::registerScreen(deviceManager);
+
+    // Create and connect FileBrowser to SDCardManager
+    auto fileBrowser = new UI::Screens::FileBrowserScreen();
+    fileBrowser->setSDCardManager(coreTaskManager->getSDCardManager());
+    UI::ScreenManager::registerScreen(fileBrowser);
+
     UI::ScreenManager::registerScreen(new UI::Screens::SettingsScreen());
 
     // Start with main menu
@@ -167,6 +176,12 @@ void BTLoggerApp::onLogReceived(const Core::LogPacket& packet, const String& dev
 
     // Print to serial for debugging
     Serial.printf("[%s] %s: %s\n", deviceName.c_str(), packet.tag, packet.message);
+
+    // Send to LogViewer screen if it exists
+    auto logViewer = dynamic_cast<UI::Screens::LogViewerScreen*>(UI::ScreenManager::getScreen("LogViewer"));
+    if (logViewer) {
+        logViewer->addLogEntry(deviceName, packet.tag, packet.message, packet.level);
+    }
 
     // Send message to UI task for toast notifications
     Core::CoreMessage message(Core::MSG_LOG_RECEIVED, deviceName, String(packet.message), packet.level);
