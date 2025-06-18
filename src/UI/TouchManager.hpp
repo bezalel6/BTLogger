@@ -39,6 +39,9 @@ class TouchManager {
     static bool isTouchedInArea(int x, int y, int width, int height);
     static bool wasTappedInArea(int x, int y, int width, int height);
 
+    // Debug and testing
+    static void showTouchDebugInfo();
+
     // Calibration - uses LovyanGFX built-in system
     static bool needsCalibration();
     static void startCalibration();

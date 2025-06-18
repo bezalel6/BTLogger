@@ -42,17 +42,16 @@ bool Button::handleTouch(int touchX, int touchY, bool touched) {
     bool wasInside = isPointInside(touchX, touchY);
 
     if (touched && wasInside && !lastTouchState) {
-        // Touch started
+        // Touch started - activate immediately
         pressed = true;
         pressTime = millis();
         lastTouchState = true;
-        return true;
-    } else if (!touched && lastTouchState && wasInside) {
-        // Touch ended inside button
+        Serial.printf("Button '%s' activated\n", text.c_str());
+
+        // Execute callback immediately on press
         if (callback) {
             callback();
         }
-        lastTouchState = false;
         return true;
     } else if (!touched) {
         lastTouchState = false;
@@ -92,11 +91,29 @@ bool Button::isPointInside(int px, int py) const {
 }
 
 void Button::drawButton(uint16_t backgroundColor) {
+    // Draw shadow (offset by 2 pixels)
+    if (enabled && !pressed) {
+        lcd.fillRoundRect(x + 2, y + 2, width, height, UIScale::scale(5), Colors::BLACK);
+    }
+
     // Draw background
     lcd.fillRoundRect(x, y, width, height, UIScale::scale(5), backgroundColor);
 
-    // Draw border
-    lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::WHITE);
+    // Draw 3D border effect
+    if (enabled) {
+        if (pressed) {
+            // Pressed state - darker border
+            lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::GRAY);
+            lcd.drawRoundRect(x + 1, y + 1, width - 2, height - 2, UIScale::scale(4), Colors::WHITE);
+        } else {
+            // Normal state - raised border effect
+            lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::WHITE);
+            lcd.drawRoundRect(x + 1, y + 1, width - 2, height - 2, UIScale::scale(4), Colors::LIGHT_GRAY);
+        }
+    } else {
+        // Disabled state - simple gray border
+        lcd.drawRoundRect(x, y, width, height, UIScale::scale(5), Colors::GRAY);
+    }
 
     // Draw text
     lcd.setTextColor(colorText);

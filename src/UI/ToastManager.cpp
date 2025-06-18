@@ -68,8 +68,8 @@ void ToastManager::drawToast() {
 
     int width = UIScale::scale(200);
     int height = UIScale::scale(40);
-    int x = (240 - width) / 2;
-    int y = UIScale::scale(20);
+    int x = (lcd->width() - width) / 2;                   // Use actual display width
+    int y = lcd->height() - height - UIScale::scale(20);  // Use actual display height
 
     // Background
     lcd->fillRoundRect(x, y, width, height, UIScale::scale(5), getToastColor(currentType));

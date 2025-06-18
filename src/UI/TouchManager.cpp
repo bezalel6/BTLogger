@@ -60,10 +60,14 @@ void TouchManager::update() {
     // Get current touch state
     currentTouch = getTouchCoordinates();
 
-    // Detect new tap
+    // Detect new tap with debouncing
     if (currentTouch.pressed && !lastTouch.pressed) {
-        tapped = true;
-        lastTouchTime = millis();
+        if (millis() - lastTouchTime > debounceTime) {
+            tapped = true;
+            lastTouchTime = millis();
+            // Reduced debug output - only show when we detect a new tap
+            Serial.printf("New tap at (%d, %d)\n", currentTouch.x, currentTouch.y);
+        }
     } else if (!currentTouch.pressed) {
         tapped = false;
     }
@@ -106,9 +110,16 @@ TouchManager::TouchPoint TouchManager::getTouchCoordinates() {
     bool isTouched = lcd->getTouch(&pos[0], &pos[1]);
 
     if (isTouched) {
-        point.x = pos[0];
-        point.y = pos[1];
+        // Clamp coordinates to screen boundaries
+        point.x = constrain(pos[0], 0, lcd->width() - 1);
+        point.y = constrain(pos[1], 0, lcd->height() - 1);
         point.pressed = true;
+
+        // Only show debug output when coordinates are actually clamped
+        if (pos[0] != point.x || pos[1] != point.y) {
+            Serial.printf("Touch clamped: (%d, %d) -> (%d, %d)\n",
+                          pos[0], pos[1], point.x, point.y);
+        }
     }
 
     return point;
@@ -232,6 +243,23 @@ void TouchManager::clearTouchCalibration() {
     preferences.clear();
     preferences.end();
     Serial.println("Touch calibration data cleared");
+}
+
+void TouchManager::showTouchDebugInfo() {
+    if (!initialized || !lcd) {
+        Serial.println("TouchManager not initialized");
+        return;
+    }
+
+    Serial.println("=== Touch Debug Info ===");
+    Serial.printf("Display dimensions: %dx%d\n", lcd->width(), lcd->height());
+    Serial.printf("Current touch: (%d, %d) pressed=%s\n",
+                  currentTouch.x, currentTouch.y, currentTouch.pressed ? "true" : "false");
+    Serial.printf("Last touch: (%d, %d) pressed=%s\n",
+                  lastTouch.x, lastTouch.y, lastTouch.pressed ? "true" : "false");
+    Serial.printf("Tapped: %s\n", tapped ? "true" : "false");
+    Serial.printf("Calibrating: %s\n", calibrating ? "true" : "false");
+    Serial.println("========================");
 }
 
 }  // namespace UI

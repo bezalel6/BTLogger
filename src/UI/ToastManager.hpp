@@ -38,7 +38,7 @@ class ToastManager {
     static ToastType currentType;
     static unsigned long showTime;
     static bool visible;
-    static const unsigned long TOAST_DURATION = 3000;  // 3 seconds
+    static const unsigned long TOAST_DURATION = 1500;  // 1.5 seconds
 
     static void showToast(const String& message, ToastType type);
     static void drawToast();

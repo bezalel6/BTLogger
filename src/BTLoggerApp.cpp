@@ -2,20 +2,31 @@
 #include "UI/UIScale.hpp"
 #include "UI/TouchManager.hpp"
 #include "UI/ToastManager.hpp"
-#include "UI/MenuManager.hpp"
+#include "UI/ScreenManager.hpp"
+#include "UI/Screens/MainMenuScreen.hpp"
+#include "UI/Screens/LogViewerScreen.hpp"
+#include "UI/Screens/SystemInfoScreen.hpp"
+#include "UI/Screens/DeviceManagerScreen.hpp"
+#include "UI/Screens/FileBrowserScreen.hpp"
+#include "UI/Screens/SettingsScreen.hpp"
 #include "UI/CriticalErrorHandler.hpp"
+#include "Core/CoreTaskManager.hpp"
+#include "Core/BluetoothManager.hpp"
+#include "Core/SDCardManager.hpp"
 
 namespace BTLogger {
 
 BTLoggerApp::BTLoggerApp()
-    : bluetoothManager(nullptr), sdCardManager(nullptr), running(false), initialized(false), lastUpdate(0) {
+    : coreTaskManager(nullptr), running(false), initialized(false), lastUpdate(0) {
 }
 
 BTLoggerApp::~BTLoggerApp() {
     stop();
 
-    delete sdCardManager;
-    delete bluetoothManager;
+    // Cleanup UI components
+    UI::ScreenManager::cleanup();
+
+    delete coreTaskManager;
 }
 
 bool BTLoggerApp::initialize() {
@@ -31,32 +42,16 @@ bool BTLoggerApp::initialize() {
     // Initialize hardware
     setupHardware();
     lcd.init();
-    // Initialize managers
-    Serial.println("Initializing managers...");
 
-    // SD Card Manager
-    sdCardManager = new Core::SDCardManager();
-    if (!sdCardManager->initialize()) {
-        Serial.println("WARNING: SD Card initialization failed - logging disabled");
-    }
-
-    // Bluetooth Manager
-    bluetoothManager = new Core::BluetoothManager();
-    if (!bluetoothManager->initialize()) {
-        Serial.println("ERROR: Bluetooth initialization failed");
+    // Initialize core task manager
+    Serial.println("Initializing CoreTaskManager...");
+    coreTaskManager = new Core::CoreTaskManager();
+    if (!coreTaskManager->initialize()) {
+        Serial.println("ERROR: CoreTaskManager initialization failed");
         return false;
     }
 
-    // Set up callbacks
-    bluetoothManager->setLogCallback([this](const Core::LogPacket& packet, const String& deviceName) {
-        onLogReceived(packet, deviceName);
-    });
-
-    bluetoothManager->setConnectionCallback([this](const String& deviceName, bool connected) {
-        onDeviceConnection(deviceName, connected);
-    });
-
-    // Initialize UI systems
+    // Initialize UI systems (on Core 1)
     UI::UIScale::initialize();
     if (!UI::TouchManager::initialize(lcd)) {
         Serial.println("ERROR: Touch initialization failed");
@@ -71,8 +66,30 @@ bool BTLoggerApp::initialize() {
         delay(50);
     }
 
-    // Initialize menu system
-    UI::MenuManager::initialize(lcd);
+    // Initialize screen system
+    UI::ScreenManager::initialize(lcd);
+
+    // Register screens
+    UI::ScreenManager::registerScreen(new UI::Screens::MainMenuScreen());
+    UI::ScreenManager::registerScreen(new UI::Screens::LogViewerScreen());
+    UI::ScreenManager::registerScreen(new UI::Screens::SystemInfoScreen());
+    UI::ScreenManager::registerScreen(new UI::Screens::DeviceManagerScreen());
+    UI::ScreenManager::registerScreen(new UI::Screens::FileBrowserScreen());
+    UI::ScreenManager::registerScreen(new UI::Screens::SettingsScreen());
+
+    // Start with main menu
+    UI::ScreenManager::navigateTo("MainMenu");
+
+    // Set up callbacks for Bluetooth manager
+    if (coreTaskManager->getBluetoothManager()) {
+        coreTaskManager->getBluetoothManager()->setLogCallback([this](const Core::LogPacket& packet, const String& deviceName) {
+            onLogReceived(packet, deviceName);
+        });
+
+        coreTaskManager->getBluetoothManager()->setConnectionCallback([this](const String& deviceName, bool connected) {
+            onDeviceConnection(deviceName, connected);
+        });
+    }
 
     initialized = true;
     Serial.println("BTLogger initialized successfully!");
@@ -89,10 +106,15 @@ void BTLoggerApp::start() {
     }
 
     running = true;
-    Serial.println("BTLogger started - Ready to receive logs");
+    Serial.println("BTLogger started - Starting core tasks...");
+
+    // Start the core task manager
+    coreTaskManager->start();
 
     // Start scanning for devices
-    bluetoothManager->startScanning();
+    if (coreTaskManager->getBluetoothManager()) {
+        coreTaskManager->getBluetoothManager()->startScanning();
+    }
 
     // Show welcome toast
     UI::ToastManager::showSuccess("BTLogger Ready - Scanning for devices...");
@@ -106,12 +128,8 @@ void BTLoggerApp::stop() {
     running = false;
     Serial.println("Stopping BTLogger...");
 
-    if (bluetoothManager) {
-        bluetoothManager->stopScanning();
-    }
-
-    if (sdCardManager) {
-        sdCardManager->endCurrentSession();
+    if (coreTaskManager) {
+        coreTaskManager->stop();
     }
 
     Serial.println("BTLogger stopped");
@@ -124,48 +142,35 @@ void BTLoggerApp::update() {
 
     unsigned long currentTime = millis();
 
-    // Update managers (limit frequency to reduce overhead)
-    if (currentTime - lastUpdate > 10) {  // 100Hz update rate
-        if (bluetoothManager) {
-            bluetoothManager->update();
-        }
-
-        // Update UI systems
-        UI::TouchManager::update();
-        UI::ToastManager::update();
-        UI::MenuManager::update();
+    // Very light update loop - UI is handled in UI task, just update LEDs occasionally
+    if (currentTime - lastUpdate > 1000) {  // Only update once per second
+        // Update LEDs
+        updateLEDs();
 
         lastUpdate = currentTime;
     }
 
-    // Update LEDs
-    updateLEDs();
+    // Small delay to prevent watchdog issues and reduce CPU usage
+    delay(10);
 }
 
 void BTLoggerApp::handleInput() {
-    // Input handling is done through the existing input system
-    // Hardware buttons/encoder events are handled in the input callbacks
+    // Input handling is done in the UI task
+    // This is kept for compatibility but is no longer needed
 }
 
 void BTLoggerApp::onLogReceived(const Core::LogPacket& packet, const String& deviceName) {
-    // Save to SD card
-    if (sdCardManager) {
-        sdCardManager->saveLogToSession(packet, deviceName);
+    // Save to SD card (this callback runs on communications core)
+    if (coreTaskManager->getSDCardManager()) {
+        coreTaskManager->getSDCardManager()->saveLogToSession(packet, deviceName);
     }
 
     // Print to serial for debugging
     Serial.printf("[%s] %s: %s\n", deviceName.c_str(), packet.tag, packet.message);
 
-    // Show toast notification for important logs
-    if (packet.level >= 2) {  // WARN and ERROR levels
-        String levelStr = (packet.level == 2) ? "WARN" : "ERROR";
-        String toastMsg = deviceName + " " + levelStr + ": " + String(packet.message);
-        if (packet.level == 3) {
-            UI::ToastManager::showError(toastMsg);
-        } else {
-            UI::ToastManager::showWarning(toastMsg);
-        }
-    }
+    // Send message to UI task for toast notifications
+    Core::CoreMessage message(Core::MSG_LOG_RECEIVED, deviceName, String(packet.message), packet.level);
+    coreTaskManager->sendToUI(message);
 }
 
 void BTLoggerApp::onDeviceConnection(const String& deviceName, bool connected) {
@@ -173,54 +178,40 @@ void BTLoggerApp::onDeviceConnection(const String& deviceName, bool connected) {
         Serial.printf("Device connected: %s\n", deviceName.c_str());
 
         // Start new logging session
-        if (sdCardManager) {
-            sdCardManager->startNewSession(deviceName);
+        if (coreTaskManager->getSDCardManager()) {
+            coreTaskManager->getSDCardManager()->startNewSession(deviceName);
         }
 
-        // Show connection toast
-        UI::ToastManager::showSuccess("Connected to " + deviceName);
+        // Update status footer with connection info
+        UI::ScreenManager::setStatusText("Connected: " + deviceName);
     } else {
         Serial.printf("Device disconnected: %s\n", deviceName.c_str());
 
         // End current session
-        if (sdCardManager) {
-            sdCardManager->endCurrentSession();
+        if (coreTaskManager->getSDCardManager()) {
+            coreTaskManager->getSDCardManager()->endCurrentSession();
         }
 
-        // Show disconnection toast
-        UI::ToastManager::showWarning("Disconnected from " + deviceName);
+        // Update status footer
+        UI::ScreenManager::setStatusText("Disconnected - Scanning for devices...");
     }
+
+    // Send message to UI task for any additional processing if needed
+    Core::CoreMessage message(Core::MSG_DEVICE_CONNECTION, deviceName, "", connected ? 1 : 0);
+    coreTaskManager->sendToUI(message);
 }
 
 void BTLoggerApp::onDeviceConnectRequest(const String& address) {
-    if (bluetoothManager) {
+    if (coreTaskManager->getBluetoothManager()) {
         Serial.printf("Connecting to device: %s\n", address.c_str());
-        bluetoothManager->connectToDevice(address);
+        coreTaskManager->getBluetoothManager()->connectToDevice(address);
     }
 }
 
 void BTLoggerApp::onFileOperation(const String& operation, const String& path) {
-    if (!sdCardManager) {
-        return;
-    }
-
-    if (operation == "load") {
-        // Load log file
-        std::vector<String> lines = sdCardManager->loadLogFile(path);
-        if (!lines.empty()) {
-            UI::ToastManager::showSuccess("Loaded " + String(lines.size()) + " log entries");
-            // File content would be displayed in the log viewer screen
-        } else {
-            UI::ToastManager::showError("Failed to load file: " + path);
-        }
-    } else if (operation == "delete") {
-        // Delete file
-        if (sdCardManager->deleteFile(path)) {
-            UI::ToastManager::showSuccess("File deleted: " + path);
-        } else {
-            UI::ToastManager::showError("Failed to delete: " + path);
-        }
-    }
+    // Send file operation to communications task
+    Core::CoreMessage message(Core::MSG_FILE_OPERATION, operation, path);
+    coreTaskManager->sendToCommunications(message);
 }
 
 void BTLoggerApp::setupHardware() {
@@ -248,12 +239,16 @@ void BTLoggerApp::updateLEDs() {
         digitalWrite(led_pin[0], running ? LOW : HIGH);
 
         // LED 1 (Green) - Bluetooth connection
-        bool hasConnection = bluetoothManager && bluetoothManager->getConnectedDeviceCount() > 0;
+        bool hasConnection = coreTaskManager &&
+                             coreTaskManager->getBluetoothManager() &&
+                             coreTaskManager->getBluetoothManager()->getConnectedDeviceCount() > 0;
         digitalWrite(led_pin[1], hasConnection ? LOW : HIGH);
 
         // LED 2 (Blue) - SD Card activity (blink when logging)
-        bool hasSDCard = sdCardManager && sdCardManager->isCardPresent();
-        if (hasSDCard && !sdCardManager->getCurrentSessionFile().isEmpty()) {
+        bool hasSDCard = coreTaskManager &&
+                         coreTaskManager->getSDCardManager() &&
+                         coreTaskManager->getSDCardManager()->isCardPresent();
+        if (hasSDCard && !coreTaskManager->getSDCardManager()->getCurrentSessionFile().isEmpty()) {
             // Blink when actively logging
             digitalWrite(led_pin[2], ledState ? LOW : HIGH);
             ledState = !ledState;

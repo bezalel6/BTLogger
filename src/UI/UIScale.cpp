@@ -5,15 +5,15 @@ namespace UI {
 
 // Static member definitions
 bool UIScale::initialized = false;
-float UIScale::currentScale = 1.0f;
+float UIScale::currentScale = 0.8f;
 Preferences UIScale::preferences;
 
 // Scale constants
 const float UIScale::SCALE_TINY = 0.8f;
 const float UIScale::SCALE_SMALL = 0.9f;
-const float UIScale::SCALE_NORMAL = 1.0f;
-const float UIScale::SCALE_LARGE = 1.2f;
-const float UIScale::SCALE_HUGE = 1.5f;
+const float UIScale::SCALE_NORMAL = 1.3f;
+const float UIScale::SCALE_LARGE = 1.5f;
+const float UIScale::SCALE_HUGE = 1.8f;
 
 void UIScale::initialize() {
     if (initialized) {

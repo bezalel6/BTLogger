@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 #include "Hardware/ESP32_SPI_9341.h"
+#include "Core/CoreTaskManager.hpp"
 #include "Core/BluetoothManager.hpp"
-#include "Core/SDCardManager.hpp"
 
 namespace BTLogger {
 
@@ -19,7 +19,7 @@ class BTLoggerApp {
     bool initialize();
     void start();
     void stop();
-    void update();
+    void update();  // Light update for main loop
 
     // Input handling (for hardware buttons if needed)
     void handleInput();
@@ -36,9 +36,8 @@ class BTLoggerApp {
     // Hardware
     Hardware::LGFX lcd;
 
-    // Managers
-    Core::BluetoothManager* bluetoothManager;
-    Core::SDCardManager* sdCardManager;
+    // Core task manager
+    Core::CoreTaskManager* coreTaskManager;
 
     // State
     bool running;
@@ -49,7 +48,7 @@ class BTLoggerApp {
     void setupHardware();
     void updateLEDs();
 
-    // Event handlers
+    // Event handlers (these will be called from callbacks)
     void onLogReceived(const Core::LogPacket& packet, const String& deviceName);
     void onDeviceConnection(const String& deviceName, bool connected);
 };
