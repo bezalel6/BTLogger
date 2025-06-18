@@ -213,6 +213,25 @@ void BluetoothManager::update() {
         }
     }
 
+    // Auto-connect to discovered devices if we have none connected
+    if (getConnectedDeviceCount() == 0 && !availableDevices.empty()) {
+        static unsigned long lastConnectionAttempt = 0;
+        if (currentTime - lastConnectionAttempt > 3000) {  // Try every 3 seconds
+            // Try to connect to the first available device
+            auto& device = availableDevices[0];
+            String address = device.getAddress().toString().c_str();
+            String name = device.getName().c_str();
+
+            Serial.printf("Attempting auto-connection to %s (%s)...\n", name.c_str(), address.c_str());
+            if (connectToDevice(address)) {
+                Serial.println("Auto-connection successful!");
+            } else {
+                Serial.println("Auto-connection failed, will retry...");
+            }
+            lastConnectionAttempt = currentTime;
+        }
+    }
+
     // Auto-restart scanning if needed
     if (!scanning && (currentTime - lastScanTime > 10000)) {  // Restart every 10 seconds
         startScanning();
@@ -250,29 +269,43 @@ std::vector<String> BluetoothManager::getAvailableDevices() const {
 }
 
 void BluetoothManager::onDeviceFound(BLEAdvertisedDevice advertisedDevice) {
+    String deviceName = advertisedDevice.getName().c_str();
+    String deviceAddress = advertisedDevice.getAddress().toString().c_str();
+
+    // Log all discovered devices for debugging
+    Serial.printf("Discovered device: %s (%s) RSSI: %d\n",
+                  deviceName.c_str(), deviceAddress.c_str(), advertisedDevice.getRSSI());
+
     // Check if device advertises our service or has "BTLogger" in name
     bool isTarget = false;
+    bool hasService = false;
 
     if (advertisedDevice.haveServiceUUID()) {
         if (advertisedDevice.isAdvertisingService(BLEUUID(targetServiceUUID.c_str()))) {
             isTarget = true;
+            hasService = true;
+            Serial.printf("  -> Device advertises BTLogger service UUID\n");
         }
     }
 
-    String deviceName = advertisedDevice.getName().c_str();
-    if (deviceName.indexOf("BTLogger") >= 0 || deviceName.indexOf("ESP32") >= 0) {
+    // Accept devices with specific names that might be BTLogger senders
+    if (deviceName.indexOf("BTLogger") >= 0 ||
+        deviceName.indexOf("ESP32") >= 0 ||
+        deviceName.indexOf("WeatherStation") >= 0 ||
+        deviceName.indexOf("MyDevice") >= 0 ||
+        deviceName.indexOf("_v") >= 0) {  // Accept devices with version numbers (e.g., "Something_v1.2")
         isTarget = true;
+        Serial.printf("  -> Device name matches BTLogger pattern\n");
     }
 
     if (isTarget) {
         // Add to available devices if not already present
-        String address = advertisedDevice.getAddress().toString().c_str();
         bool found = false;
         for (const auto& device : availableDevices) {
             // Use const_cast to call non-const methods (BLE library limitation)
             auto& mutableDevice = const_cast<BLEAdvertisedDevice&>(device);
-            String deviceAddress = mutableDevice.getAddress().toString().c_str();
-            if (deviceAddress == address) {
+            String existingAddress = mutableDevice.getAddress().toString().c_str();
+            if (existingAddress == deviceAddress) {
                 found = true;
                 break;
             }
@@ -280,9 +313,17 @@ void BluetoothManager::onDeviceFound(BLEAdvertisedDevice advertisedDevice) {
 
         if (!found) {
             availableDevices.push_back(advertisedDevice);
-            Serial.printf("Found target device: %s (%s)\n",
-                          deviceName.c_str(), address.c_str());
+            Serial.printf("*** Found BTLogger target device: %s (%s) ***\n",
+                          deviceName.c_str(), deviceAddress.c_str());
+
+            // Auto-connect to the first discovered BTLogger device
+            if (getConnectedDeviceCount() == 0) {
+                Serial.printf("Auto-connecting to %s...\n", deviceName.c_str());
+                // We'll connect in the next update cycle to avoid blocking the scan
+            }
         }
+    } else {
+        Serial.printf("  -> Device ignored (not a BTLogger target)\n");
     }
 }
 
