@@ -7,7 +7,7 @@
 #endif
 
 // Compile-time calibration version - increment this to invalidate all existing calibration data
-#define TOUCH_CALIBRATION_VERSION 5
+#define TOUCH_CALIBRATION_VERSION 6
 
 namespace BTLogger {
 namespace UI {
@@ -16,6 +16,7 @@ namespace UI {
 bool TouchManager::initialized = false;
 lgfx::LGFX_Device* TouchManager::lcd = nullptr;
 Preferences TouchManager::preferences;
+TouchManager::CalibrationData TouchManager::calibrationData;
 
 #ifdef USE_BITBANG_TOUCH
 XPT2046_Bitbang* TouchManager::touchController = nullptr;
@@ -48,22 +49,23 @@ bool TouchManager::initialize(lgfx::LGFX_Device& display) {
         std::uint16_t calData[8];
         if (loadTouchCalibration(calData)) {
             // Extract min/max values from calibration data
+            // Note: Touch controller appears to be rotated 90° clockwise from display
             int minRawX = min(min(calData[0], calData[2]), min(calData[4], calData[6]));
             int maxRawX = max(max(calData[0], calData[2]), max(calData[4], calData[6]));
             int minRawY = min(min(calData[1], calData[3]), min(calData[5], calData[7]));
             int maxRawY = max(max(calData[1], calData[3]), max(calData[5], calData[7]));
 
-            // Set calibration on the touch controller (swap X values if horizontally flipped)
-            touchController->setCalibration(maxRawX, minRawX, minRawY, maxRawY);
+            // Use our new calibration system (coordinate transformation handles rotation)
+            setCalibration(minRawX, maxRawX, minRawY, maxRawY);
             Serial.println("Touch calibration loaded from storage for bitbang touch");
         } else {
             Serial.println("Failed to load calibration data, performing new calibration");
-            performTouchCalibration();
+            improvedCalibrationRoutine();
         }
     } else {
         Serial.println("No saved touch calibration found for bitbang touch");
         Serial.println("Starting automatic calibration...");
-        performTouchCalibration();  // This will call performBitbangTouchCalibration()
+        improvedCalibrationRoutine();
     }
     Serial.println("TouchManager initialized with software SPI (bitbang) touch");
 #else
@@ -142,6 +144,11 @@ bool TouchManager::needsCalibration() {
 void TouchManager::startCalibration() {
     Serial.println("Starting touch calibration...");
     performTouchCalibration();
+}
+
+void TouchManager::startImprovedCalibration() {
+    Serial.println("Starting improved touch calibration...");
+    improvedCalibrationRoutine();
 }
 
 void TouchManager::resetCalibration() {
@@ -363,14 +370,20 @@ TouchManager::TouchPoint TouchManager::getBitbangTouchCoordinates() {
     auto touch = touchController->getTouch();
 
     if (touch.zRaw >= 500) {  // Minimum pressure threshold
-        // Use the touch controller's already-calibrated coordinates
-        point.x = touch.x;
-        point.y = touch.y;
+        // Return raw coordinates - calibration will be handled at higher level
+        point.x = touch.xRaw;
+        point.y = touch.yRaw;
         point.pressed = true;
 
-        // Clamp to screen boundaries
-        point.x = constrain(point.x, 0, lcd->width() - 1);
-        point.y = constrain(point.y, 0, lcd->height() - 1);
+        // If we have calibration data, also provide calibrated coordinates
+        if (calibrationData.isValid) {
+            transformRawToScreen(point.x, point.y, point.calx, point.caly);
+            applyRotation(point.calx, point.caly);
+
+            // Clamp calibrated coordinates to screen boundaries
+            point.calx = constrain(point.calx, 0, calibrationData.screenWidth - 1);
+            point.caly = constrain(point.caly, 0, calibrationData.screenHeight - 1);
+        }
     }
 
     return point;
@@ -496,14 +509,15 @@ void TouchManager::performBitbangTouchCalibration() {
     };
 
     if (saveTouchCalibration(calData)) {
-        // Extract min/max values and set calibration on the touch controller
+        // Extract min/max values and use our new calibration system
+        // Note: Touch controller appears to be rotated 90° clockwise from display
         int minRawX = min(min(calData[0], calData[2]), min(calData[4], calData[6]));
         int maxRawX = max(max(calData[0], calData[2]), max(calData[4], calData[6]));
         int minRawY = min(min(calData[1], calData[3]), min(calData[5], calData[7]));
         int maxRawY = max(max(calData[1], calData[3]), max(calData[5], calData[7]));
 
-        // Set calibration (swap X values if horizontally flipped)
-        touchController->setCalibration(maxRawX, minRawX, minRawY, maxRawY);
+        // Use our new calibration system (coordinate transformation handles rotation)
+        setCalibration(minRawX, maxRawX, minRawY, maxRawY);
 
         Serial.println("Bitbang touch calibration saved successfully");
         lcd->fillScreen(0x0000);
@@ -536,6 +550,256 @@ void TouchManager::drawCalibrationCrosshair(int x, int y) {
 }
 
 #endif
+
+void TouchManager::setCalibration(uint16_t xMin, uint16_t xMax, uint16_t yMin, uint16_t yMax) {
+    calibrationData.xMin = xMin;
+    calibrationData.xMax = xMax;
+    calibrationData.yMin = yMin;
+    calibrationData.yMax = yMax;
+    calibrationData.screenWidth = lcd ? lcd->width() : 320;
+    calibrationData.screenHeight = lcd ? lcd->height() : 240;
+    calibrationData.isValid = true;
+
+    Serial.printf("Touch calibration set: X(%d-%d), Y(%d-%d), Screen(%dx%d)\n",
+                  xMin, xMax, yMin, yMax, calibrationData.screenWidth, calibrationData.screenHeight);
+}
+
+TouchManager::TouchPoint TouchManager::getCalibratedPoint() {
+    TouchPoint point = getTouchCoordinates();
+
+    if (point.pressed && calibrationData.isValid) {
+        // Transform raw coordinates to calibrated screen coordinates
+        transformRawToScreen(point.x, point.y, point.calx, point.caly);
+        applyRotation(point.calx, point.caly);
+
+        // Clamp to screen boundaries
+        point.calx = constrain(point.calx, 0, calibrationData.screenWidth - 1);
+        point.caly = constrain(point.caly, 0, calibrationData.screenHeight - 1);
+    }
+
+    return point;
+}
+
+void TouchManager::transformRawToScreen(int rawX, int rawY, int& screenX, int& screenY) {
+    // Based on calibration data analysis, the touch controller appears to be rotated 90° clockwise
+    // Raw X corresponds to screen Y (inverted)
+    // Raw Y corresponds to screen X
+
+    // Transform with coordinate system correction
+    screenX = map(rawY, calibrationData.yMin, calibrationData.yMax, 0, calibrationData.screenWidth - 1);
+    screenY = map(rawX, calibrationData.xMax, calibrationData.xMin, 0, calibrationData.screenHeight - 1);  // Note: xMax, xMin to invert
+}
+
+void TouchManager::applyRotation(int& x, int& y) {
+    int tempX, tempY;
+
+    switch (calibrationData.rotation) {
+        case 0:  // Portrait (0 degrees)
+            // No rotation needed
+            break;
+
+        case 1:  // Landscape (90 degrees)
+            tempX = y;
+            tempY = calibrationData.screenHeight - 1 - x;
+            x = tempX;
+            y = tempY;
+            break;
+
+        case 2:  // Reverse Portrait (180 degrees)
+            x = calibrationData.screenWidth - 1 - x;
+            y = calibrationData.screenHeight - 1 - y;
+            break;
+
+        case 3:  // Reverse Landscape (270 degrees)
+            tempX = calibrationData.screenWidth - 1 - y;
+            tempY = x;
+            x = tempX;
+            y = tempY;
+            break;
+    }
+}
+
+void TouchManager::setRotation(uint8_t rotation) {
+    calibrationData.rotation = rotation % 4;  // Ensure rotation is 0-3
+    if (lcd) {
+        calibrationData.screenWidth = lcd->width();
+        calibrationData.screenHeight = lcd->height();
+    }
+    Serial.printf("Touch rotation set to %d, screen size: %dx%d\n",
+                  calibrationData.rotation, calibrationData.screenWidth, calibrationData.screenHeight);
+}
+
+bool TouchManager::improvedCalibrationRoutine() {
+    if (!lcd) return false;
+
+    Serial.println("Starting improved touch calibration...");
+
+    // Simple 5-point calibration: corners + center
+    struct CalibrationPoint {
+        int screenX, screenY;
+        int rawX, rawY;
+        const char* name;
+    };
+
+    CalibrationPoint calPoints[5] = {
+        {40, 40, 0, 0, "Top-Left"},
+        {lcd->width() - 40, 40, 0, 0, "Top-Right"},
+        {40, lcd->height() - 40, 0, 0, "Bottom-Left"},
+        {lcd->width() - 40, lcd->height() - 40, 0, 0, "Bottom-Right"},
+        {lcd->width() / 2, lcd->height() / 2, 0, 0, "Center"}};
+
+    lcd->fillScreen(0x0000);
+    lcd->setTextColor(0xFFFF);
+    lcd->setTextSize(2);
+
+    for (int i = 0; i < 5; i++) {
+        lcd->fillScreen(0x0000);
+
+        // Draw instructions
+        lcd->setCursor(10, 10);
+        lcd->printf("Calibration %d/5", i + 1);
+        lcd->setCursor(10, 35);
+        lcd->printf("Touch: %s", calPoints[i].name);
+        lcd->setCursor(10, 60);
+        lcd->println("Hold for 1 second");
+
+        // Draw crosshair
+        drawCalibrationCrosshair(calPoints[i].screenX, calPoints[i].screenY);
+
+        // Wait for touch
+        bool pointCollected = false;
+        unsigned long startTime = millis();
+        const unsigned long timeout = 30000;
+
+        while (!pointCollected && (millis() - startTime) < timeout) {
+#ifdef USE_BITBANG_TOUCH
+            if (touchController) {
+                auto touch = touchController->getTouch();
+                if (touch.zRaw >= 500) {
+                    // Collect samples for 1 second
+                    int sampleCount = 0;
+                    long sumX = 0, sumY = 0;
+                    unsigned long sampleStart = millis();
+
+                    while (millis() - sampleStart < 1000) {
+                        auto sampleTouch = touchController->getTouch();
+                        if (sampleTouch.zRaw >= 500) {
+                            sumX += sampleTouch.xRaw;
+                            sumY += sampleTouch.yRaw;
+                            sampleCount++;
+                        }
+                        delay(10);
+                    }
+
+                    if (sampleCount > 20) {
+                        calPoints[i].rawX = sumX / sampleCount;
+                        calPoints[i].rawY = sumY / sampleCount;
+                        pointCollected = true;
+
+                        Serial.printf("Point %d (%s): screen(%d,%d) -> raw(%d,%d)\n",
+                                      i + 1, calPoints[i].name,
+                                      calPoints[i].screenX, calPoints[i].screenY,
+                                      calPoints[i].rawX, calPoints[i].rawY);
+
+                        // Visual feedback
+                        lcd->fillScreen(0x07E0);
+                        lcd->setTextColor(0x0000);
+                        lcd->setCursor(50, 100);
+                        lcd->printf("%s OK!", calPoints[i].name);
+                        delay(1000);
+                    }
+                }
+            }
+#else
+            // For LovyanGFX touch
+            int pos[2] = {0, 0};
+            if (lcd->getTouch(&pos[0], &pos[1])) {
+                // Similar logic for hardware touch
+                calPoints[i].rawX = pos[0];
+                calPoints[i].rawY = pos[1];
+                pointCollected = true;
+                delay(1000);  // Simple delay for hardware touch
+            }
+#endif
+            delay(50);
+        }
+
+        if (!pointCollected) {
+            Serial.println("Calibration timeout!");
+            lcd->fillScreen(0x0000);
+            lcd->setTextColor(0xF800);
+            lcd->setCursor(50, 100);
+            lcd->println("TIMEOUT!");
+            delay(2000);
+            return false;
+        }
+    }
+
+    // Calculate calibration bounds from collected points
+    int minRawX = calPoints[0].rawX, maxRawX = calPoints[0].rawX;
+    int minRawY = calPoints[0].rawY, maxRawY = calPoints[0].rawY;
+
+    for (int i = 1; i < 5; i++) {
+        minRawX = min(minRawX, calPoints[i].rawX);
+        maxRawX = max(maxRawX, calPoints[i].rawX);
+        minRawY = min(minRawY, calPoints[i].rawY);
+        maxRawY = max(maxRawY, calPoints[i].rawY);
+    }
+
+    // Add some margin to the bounds
+    int marginX = (maxRawX - minRawX) * 0.05;  // 5% margin
+    int marginY = (maxRawY - minRawY) * 0.05;
+    minRawX += marginX;
+    maxRawX -= marginX;
+    minRawY += marginY;
+    maxRawY -= marginY;
+
+    // Set the new calibration
+    setCalibration(minRawX, maxRawX, minRawY, maxRawY);
+
+    // Save calibration data
+    std::uint16_t calData[8] = {
+        (std::uint16_t)calPoints[0].rawX, (std::uint16_t)calPoints[0].rawY,
+        (std::uint16_t)calPoints[1].rawX, (std::uint16_t)calPoints[1].rawY,
+        (std::uint16_t)calPoints[2].rawX, (std::uint16_t)calPoints[2].rawY,
+        (std::uint16_t)calPoints[3].rawX, (std::uint16_t)calPoints[3].rawY};
+
+    if (saveTouchCalibration(calData)) {
+        Serial.println("Improved calibration completed and saved!");
+        lcd->fillScreen(0x0000);
+        lcd->setTextColor(0x07E0);
+        lcd->setCursor(50, 100);
+        lcd->println("Calibration");
+        lcd->setCursor(50, 125);
+        lcd->println("Complete!");
+        delay(2000);
+        return true;
+    }
+
+    return false;
+}
+
+TouchManager::TouchPoint TouchManager::getTouch() {
+    TouchPoint point = getTouchCoordinates();
+
+    if (point.pressed && calibrationData.isValid) {
+        // Transform raw coordinates to calibrated screen coordinates
+        transformRawToScreen(point.x, point.y, point.calx, point.caly);
+
+        // Apply any rotation if needed
+        applyRotation(point.calx, point.caly);
+
+        // Clamp to screen boundaries
+        point.calx = constrain(point.calx, 0, calibrationData.screenWidth - 1);
+        point.caly = constrain(point.caly, 0, calibrationData.screenHeight - 1);
+
+        // Debug output to verify calibration
+        Serial.printf("Touch: raw(%d,%d) -> calibrated(%d,%d)\n",
+                      point.x, point.y, point.calx, point.caly);
+    }
+
+    return point;
+}
 
 }  // namespace UI
 }  // namespace BTLogger

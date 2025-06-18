@@ -215,7 +215,7 @@ void CoreTaskManager::runUILoop() {
 
         // Handle touch input for screen manager
         UI::TouchManager::TouchPoint touch = UI::TouchManager::getTouch();
-        UI::ScreenManager::handleTouch(touch.x, touch.y, touch.pressed);
+        UI::ScreenManager::handleTouch(touch.calx, touch.caly, touch.pressed);
 
         // Small delay to prevent watchdog issues
         vTaskDelay(pdMS_TO_TICKS(20));  // 50Hz UI update rate

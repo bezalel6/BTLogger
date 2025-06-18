@@ -1,3 +1,30 @@
+/**
+ * TouchManager - Enhanced touch input manager with advanced calibration
+ *
+ * This class provides touch input management with both raw and calibrated coordinates.
+ * It supports both software SPI (bitbang) and hardware SPI touch controllers.
+ *
+ * BASIC USAGE:
+ * 1. Initialize: TouchManager::initialize(display)
+ * 2. Update in loop: TouchManager::update()
+ * 3. Get touch: TouchManager::getTouch()
+ *
+ * CALIBRATION USAGE:
+ * Option 1 - Automatic calibration (recommended for first-time setup):
+ *   TouchManager::startImprovedCalibration();
+ *
+ * Option 2 - Manual calibration (if you know the values):
+ *   TouchManager::setCalibration(xMin, xMax, yMin, yMax);
+ *   TouchManager::setRotation(rotation); // 0-3, same as display rotation
+ *
+ * After calibration, TouchManager::getTouch() returns TouchPoint with:
+ * - .x, .y = raw touch coordinates
+ * - .calx, .caly = calibrated screen coordinates (matches display pixels)
+ * - .pressed = true if currently touched
+ *
+ * The calibrated coordinates automatically handle rotation and screen mapping.
+ */
+
 #pragma once
 
 #include <Arduino.h>
@@ -25,12 +52,23 @@ class TouchManager {
    public:
     // Touch point structure
     struct TouchPoint {
-        int x = 0;
-        int y = 0;
-        bool pressed = false;
+        int x, y;
+        bool pressed;
 
-        TouchPoint() : x(0), y(0), pressed(false) {}
-        TouchPoint(int _x, int _y, bool _pressed = true) : x(_x), y(_y), pressed(_pressed) {}
+        // Calibrated coordinates (for use after calibration)
+        int calx, caly;
+
+        TouchPoint() : x(0), y(0), pressed(false), calx(0), caly(0) {}
+    };
+
+    // Calibration data structure
+    struct CalibrationData {
+        uint16_t xMin, xMax, yMin, yMax;
+        int screenWidth, screenHeight;
+        uint8_t rotation;
+        bool isValid;
+
+        CalibrationData() : xMin(0), xMax(4095), yMin(0), yMax(4095), screenWidth(320), screenHeight(240), rotation(0), isValid(false) {}
     };
 
     // Initialization
@@ -41,7 +79,7 @@ class TouchManager {
     static void update();
 
     // Touch state
-    static TouchPoint getTouch() { return currentTouch; }
+    static TouchPoint getTouch();  // Returns calibrated coordinates if available, raw otherwise
     static bool isTouched() { return currentTouch.pressed; }
     static bool wasTapped() { return tapped; }
     static void clearTap() { tapped = false; }
@@ -55,12 +93,19 @@ class TouchManager {
 
     // Calibration - uses LovyanGFX built-in system
     static bool needsCalibration();
-    static void startCalibration();
+    static void startCalibration();          // Uses old calibration routine
+    static void startImprovedCalibration();  // Uses new improved routine
     static bool isCalibrating() { return calibrating; }
     static void resetCalibration();
 
     // Configuration
     static void setDebounceTime(unsigned long ms) { debounceTime = ms; }
+
+    // Enhanced calibration methods
+    static void setCalibration(uint16_t xMin, uint16_t xMax, uint16_t yMin, uint16_t yMax);
+    static void setRotation(uint8_t rotation);
+    static TouchPoint getCalibratedPoint();
+    static bool isCalibrated() { return calibrationData.isValid; }
 
    private:
     static bool initialized;
@@ -84,7 +129,7 @@ class TouchManager {
     static void performTouchCalibration();
     static void clearTouchCalibration();
 
-    // Touch coordinate retrieval
+    // Touch coordinate retrieval (internal use)
     static TouchPoint getTouchCoordinates();
 
 #ifdef USE_BITBANG_TOUCH
@@ -100,6 +145,13 @@ class TouchManager {
     // Touch pin definitions are used from Hardware/ESP32_SPI_9341.h macros:
     // TOUCH_IRQ, TOUCH_MOSI, TOUCH_MISO, TOUCH_SCK, TOUCH_CS
 #endif
+
+    static CalibrationData calibrationData;
+
+    // Coordinate transformation methods
+    static void transformRawToScreen(int rawX, int rawY, int& screenX, int& screenY);
+    static void applyRotation(int& x, int& y);
+    static bool improvedCalibrationRoutine();
 };
 
 }  // namespace UI
